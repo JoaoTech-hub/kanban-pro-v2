@@ -41,8 +41,8 @@ async function atualizar({ id, organizationId, projectId, titulo, descricao, pri
   return cardRepository.findByIdAndProject(id, organizationId, projectId);
 }
 
-async function mover({ id, organizationId, projectId, colunaId, ordem, organizationRole }) {
-  garantirPapelGerencial(organizationRole);
+async function mover({ id, organizationId, projectId, colunaId, ordem }) {
+  // Permissão liberada para membros da organização (a validação de membro é feita pelo middleware requireOrganization)
   await colunaService.validarPertencimento(colunaId, organizationId, projectId);
 
   const resultado = await cardRepository.updateById(id, organizationId, projectId, { colunaId, ordem });

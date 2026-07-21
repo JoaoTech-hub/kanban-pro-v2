@@ -156,6 +156,33 @@ describe("Projects", () => {
       expect(res.status).toBe(404);
     });
 
+    test("duas remoções concorrentes do mesmo projeto: uma retorna 204 e a outra 404 (regressão de condição de corrida)", async () => {
+      const usuario = await registrarUsuario("crudRemoverConcorrente");
+
+      const criado = await request(app)
+        .post(`/organizations/${usuario.organizationId}/projects`)
+        .set("Authorization", `Bearer ${usuario.token}`)
+        .send({ name: "Projeto a Remover Concorrente" });
+
+      const [respostaA, respostaB] = await Promise.all([
+        request(app)
+          .delete(`/organizations/${usuario.organizationId}/projects/${criado.body.id}`)
+          .set("Authorization", `Bearer ${usuario.token}`),
+        request(app)
+          .delete(`/organizations/${usuario.organizationId}/projects/${criado.body.id}`)
+          .set("Authorization", `Bearer ${usuario.token}`),
+      ]);
+
+      const statuses = [respostaA.status, respostaB.status].sort();
+      expect(statuses).toEqual([204, 404]);
+
+      const buscaAposRemocao = await request(app)
+        .get(`/organizations/${usuario.organizationId}/projects/${criado.body.id}`)
+        .set("Authorization", `Bearer ${usuario.token}`);
+
+      expect(buscaAposRemocao.status).toBe(404);
+    });
+
     test("renomeia um projeto com sucesso", async () => {
       const usuario = await registrarUsuario("crud8");
 

@@ -194,5 +194,125 @@ describe("Colunas e Cards", () => {
 
       expect(tentativa.status).toBe(404);
     });
+
+    test("member PODE mover card de coluna (200/204)", async () => {
+      const owner = await registrarUsuario("cardMoveOwner");
+      const membro = await registrarUsuario("cardMoveMember");
+      const organizationMemberRepository = require("../src/repositories/organizationMember.repository");
+      const jwt = require("jsonwebtoken");
+
+      const membroId = jwt.decode(membro.token).id;
+      await organizationMemberRepository.create({
+        organizationId: owner.organizationId,
+        userId: membroId,
+        role: "member",
+      });
+
+      const projeto = await criarProjeto(owner.token, owner.organizationId);
+      const colunas = await request(app)
+        .get(`${base(owner.organizationId, projeto.id)}/colunas`)
+        .set("Authorization", `Bearer ${owner.token}`);
+
+      // Owner cria o card
+      const card = await request(app)
+        .post(`${base(owner.organizationId, projeto.id)}/cards`)
+        .set("Authorization", `Bearer ${owner.token}`)
+        .send({ titulo: "Card para Mover", colunaId: colunas.body[0].id });
+
+      // Member tenta mover para a segunda coluna
+      const res = await request(app)
+        .patch(`${base(owner.organizationId, projeto.id)}/cards/${card.body.id}/mover`)
+        .set("Authorization", `Bearer ${membro.token}`)
+        .send({ colunaId: colunas.body[1].id, ordem: 0 });
+
+      expect([200, 204]).toContain(res.status);
+    });
+
+    test("member NÃO pode criar card (403)", async () => {
+      const owner = await registrarUsuario("cardRoleOwner1");
+      const membro = await registrarUsuario("cardRoleMember1");
+      const organizationMemberRepository = require("../src/repositories/organizationMember.repository");
+      const jwt = require("jsonwebtoken");
+
+      const membroId = jwt.decode(membro.token).id;
+      await organizationMemberRepository.create({
+        organizationId: owner.organizationId,
+        userId: membroId,
+        role: "member",
+      });
+
+      const projeto = await criarProjeto(owner.token, owner.organizationId);
+      const colunas = await request(app)
+        .get(`${base(owner.organizationId, projeto.id)}/colunas`)
+        .set("Authorization", `Bearer ${owner.token}`);
+
+      const res = await request(app)
+        .post(`${base(owner.organizationId, projeto.id)}/cards`)
+        .set("Authorization", `Bearer ${membro.token}`)
+        .send({ titulo: "Card Proibido", colunaId: colunas.body[0].id });
+
+      expect(res.status).toBe(403);
+    });
+
+    test("member NÃO pode editar detalhes do card (403)", async () => {
+      const owner = await registrarUsuario("cardRoleOwner2");
+      const membro = await registrarUsuario("cardRoleMember2");
+      const organizationMemberRepository = require("../src/repositories/organizationMember.repository");
+      const jwt = require("jsonwebtoken");
+
+      const membroId = jwt.decode(membro.token).id;
+      await organizationMemberRepository.create({
+        organizationId: owner.organizationId,
+        userId: membroId,
+        role: "member",
+      });
+
+      const projeto = await criarProjeto(owner.token, owner.organizationId);
+      const colunas = await request(app)
+        .get(`${base(owner.organizationId, projeto.id)}/colunas`)
+        .set("Authorization", `Bearer ${owner.token}`);
+
+      const card = await request(app)
+        .post(`${base(owner.organizationId, projeto.id)}/cards`)
+        .set("Authorization", `Bearer ${owner.token}`)
+        .send({ titulo: "Original", colunaId: colunas.body[0].id });
+
+      const res = await request(app)
+        .patch(`${base(owner.organizationId, projeto.id)}/cards/${card.body.id}`)
+        .set("Authorization", `Bearer ${membro.token}`)
+        .send({ titulo: "Tentativa de Alteração", colunaId: colunas.body[0].id });
+
+      expect(res.status).toBe(403);
+    });
+
+    test("member NÃO pode excluir card (403)", async () => {
+      const owner = await registrarUsuario("cardRoleOwner3");
+      const membro = await registrarUsuario("cardRoleMember3");
+      const organizationMemberRepository = require("../src/repositories/organizationMember.repository");
+      const jwt = require("jsonwebtoken");
+
+      const membroId = jwt.decode(membro.token).id;
+      await organizationMemberRepository.create({
+        organizationId: owner.organizationId,
+        userId: membroId,
+        role: "member",
+      });
+
+      const projeto = await criarProjeto(owner.token, owner.organizationId);
+      const colunas = await request(app)
+        .get(`${base(owner.organizationId, projeto.id)}/colunas`)
+        .set("Authorization", `Bearer ${owner.token}`);
+
+      const card = await request(app)
+        .post(`${base(owner.organizationId, projeto.id)}/cards`)
+        .set("Authorization", `Bearer ${owner.token}`)
+        .send({ titulo: "Para deletar", colunaId: colunas.body[0].id });
+
+      const res = await request(app)
+        .delete(`${base(owner.organizationId, projeto.id)}/cards/${card.body.id}`)
+        .set("Authorization", `Bearer ${membro.token}`);
+
+      expect(res.status).toBe(403);
+    });
   });
 });
