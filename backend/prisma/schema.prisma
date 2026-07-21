@@ -1,0 +1,125 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+model Organization {
+  id        String               @id @default(uuid())
+  name      String
+  slug      String               @unique
+  plan      Plano                @default(free)
+  createdAt DateTime             @default(now()) @map("created_at")
+  members   OrganizationMember[]
+  projects  Project[]
+
+  @@map("organizations")
+}
+
+model User {
+  id                  String               @id @default(uuid())
+  name                String
+  email               String               @unique
+  passwordHash        String               @map("password_hash")
+  createdAt           DateTime             @default(now()) @map("created_at")
+  tokenVersion        Int                  @default(0) @map("token_version")
+  memberships         OrganizationMember[]
+  passwordResetTokens PasswordResetToken[]
+
+  @@map("users")
+}
+
+model OrganizationMember {
+  organizationId String       @map("organization_id")
+  userId         String       @map("user_id")
+  role           PapelMembro  @default(member)
+  joinedAt       DateTime     @default(now()) @map("joined_at")
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([organizationId, userId])
+  @@index([userId])
+  @@map("organization_members")
+}
+
+model PasswordResetToken {
+  id        String    @id @default(uuid())
+  userId    String    @map("user_id")
+  tokenHash String    @unique @map("token_hash")
+  expiresAt DateTime  @map("expires_at")
+  usedAt    DateTime? @map("used_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("password_reset_tokens")
+}
+
+model Project {
+  id             String       @id @default(uuid())
+  organizationId String       @map("organization_id")
+  name           String
+  type           TipoProjeto  @default(saas)
+  createdAt      DateTime     @default(now()) @map("created_at")
+  colunas        Coluna[]
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@map("projects")
+}
+
+model Coluna {
+  id             String  @id @default(uuid())
+  organizationId String  @map("organization_id")
+  projectId      String  @map("project_id")
+  nome           String
+  ordem          Int     @default(0)
+  cards          Card[]
+  project        Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, projectId])
+  @@map("colunas")
+}
+
+model Card {
+  id             String     @id @default(uuid())
+  organizationId String     @map("organization_id")
+  colunaId       String     @map("coluna_id")
+  titulo         String
+  descricao      String?
+  prioridade     Prioridade @default(media)
+  ordem          Int        @default(0)
+  createdAt      DateTime   @default(now()) @map("created_at")
+  prazo          String?
+  coluna         Coluna     @relation(fields: [colunaId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, colunaId])
+  @@map("cards")
+}
+
+enum Plano {
+  free
+  pro
+}
+
+enum PapelMembro {
+  owner
+  admin
+  member
+}
+
+enum TipoProjeto {
+  saas
+  app
+  jogo
+}
+
+enum Prioridade {
+  baixa
+  media
+  alta
+}
