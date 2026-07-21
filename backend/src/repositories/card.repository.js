@@ -16,21 +16,24 @@ function findByIdAndProject(id, organizationId, projectId) {
   });
 }
 
-async function proximaOrdem(organizationId, colunaId) {
-  const resultado = await prisma.card.aggregate({
+async function proximaOrdem(organizationId, colunaId, tx = prisma) {
+  if (tx !== prisma) {
+    await tx.$executeRaw`SELECT id FROM "colunas" WHERE id = ${colunaId} AND "organization_id" = ${organizationId} FOR UPDATE`;
+  }
+
+  const resultado = await tx.card.aggregate({
     where: { organizationId, colunaId },
     _max: { ordem: true },
   });
   return (resultado._max.ordem ?? -1) + 1;
 }
 
-function create(dados) {
-  return prisma.card.create({ data: dados });
+function create(dados, tx = prisma) {
+  return tx.card.create({ data: dados });
 }
 
-// Mesma correção: escopo por projectId via relação com coluna, não só organizationId.
-function updateById(id, organizationId, projectId, dados) {
-  return prisma.card.updateMany({
+function updateById(id, organizationId, projectId, dados, tx = prisma) {
+  return tx.card.updateMany({
     where: { id, organizationId, coluna: { projectId } },
     data: dados,
   });

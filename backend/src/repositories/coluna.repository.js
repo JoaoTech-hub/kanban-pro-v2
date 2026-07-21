@@ -24,16 +24,21 @@ function findByIdAndProject(id, organizationId, projectId) {
   return prisma.coluna.findFirst({ where: { id, organizationId, projectId } });
 }
 
-async function proximaOrdem(organizationId, projectId) {
-  const resultado = await prisma.coluna.aggregate({
+async function proximaOrdem(organizationId, projectId, tx = prisma) {
+  if (tx !== prisma) {
+    // Bloqueia a linha do projeto no banco para evitar leituras concorrentes de ordem de coluna
+    await tx.$executeRaw`SELECT id FROM "projects" WHERE id = ${projectId} AND "organization_id" = ${organizationId} FOR UPDATE`;
+  }
+
+  const resultado = await tx.coluna.aggregate({
     where: { organizationId, projectId },
     _max: { ordem: true },
   });
   return (resultado._max.ordem ?? -1) + 1;
 }
 
-function create({ organizationId, projectId, nome, ordem }, client = prisma) {
-  return client.coluna.create({ data: { organizationId, projectId, nome, ordem } });
+function create({ organizationId, projectId, nome, ordem }, tx = prisma) {
+  return tx.coluna.create({ data: { organizationId, projectId, nome, ordem } });
 }
 
 function updateNome(id, organizationId, projectId, nome) {

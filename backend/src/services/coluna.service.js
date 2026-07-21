@@ -1,3 +1,4 @@
+const prisma = require("../config/db");
 const colunaRepository = require("../repositories/coluna.repository");
 const { NotFoundError } = require("../shared/errors/AppError");
 const { garantirPapelGerencial } = require("../shared/authorization");
@@ -8,8 +9,12 @@ function listar(organizationId, projectId) {
 
 async function criar({ organizationId, projectId, nome, organizationRole }) {
   garantirPapelGerencial(organizationRole);
-  const ordem = await colunaRepository.proximaOrdem(organizationId, projectId);
-  return colunaRepository.create({ organizationId, projectId, nome, ordem });
+
+  // Executa o cálculo da ordem e a criação em transação atômica com lock no projeto
+  return prisma.$transaction(async (tx) => {
+    const ordem = await colunaRepository.proximaOrdem(organizationId, projectId, tx);
+    return colunaRepository.create({ organizationId, projectId, nome, ordem }, tx);
+  });
 }
 
 async function renomear({ id, organizationId, projectId, nome, organizationRole }) {
