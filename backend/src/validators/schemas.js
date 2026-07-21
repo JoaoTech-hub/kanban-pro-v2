@@ -55,6 +55,11 @@ const redefinirSenhaSchema = z.object({
   novaSenha: z.string().min(6, "A nova senha deve ter pelo menos 6 caracteres").max(200),
 });
 
+const paginacaoQuerySchema = z.object({
+  pagina: z.coerce.number().int().min(1).default(1),
+  limite: z.coerce.number().int().min(1).max(100).default(20),
+});
+
 function validar(schema) {
   return (req, res, next) => {
     const resultado = schema.safeParse(req.body);
@@ -79,5 +84,6 @@ module.exports = {
   senhaSchema,
   esqueciSenhaSchema,
   redefinirSenhaSchema,
+  paginacaoQuerySchema,
   validar,
 };

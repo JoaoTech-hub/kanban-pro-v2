@@ -49,9 +49,27 @@ async function criar({ organization, organizationRole, name, type }) {
   );
 }
 
-// Leitura: qualquer membro da organização pode listar e visualizar, sem checagem de role.
-function listar(organizationId) {
-  return projectRepository.findAllByOrganization(organizationId);
+// Leitura paginada: qualquer membro da organização pode listar e visualizar, sem checagem de role.
+async function listar(organizationId, { pagina = 1, limite = 20 } = {}) {
+  const skip = (pagina - 1) * limite;
+  const take = limite;
+
+  const { total, projetos } = await projectRepository.findAllByOrganization(organizationId, {
+    skip,
+    take,
+  });
+
+  const totalPaginas = Math.ceil(total / limite) || 1;
+
+  return {
+    dados: projetos,
+    meta: {
+      total,
+      pagina,
+      limite,
+      totalPaginas,
+    },
+  };
 }
 
 async function buscarPorId(id, organizationId) {

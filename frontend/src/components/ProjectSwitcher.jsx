@@ -46,7 +46,9 @@ export default function ProjectSwitcher() {
   const [paraRenomear, setParaRenomear] = useState(null); // projeto selecionado para renomear
   const [salvandoRenome, setSalvandoRenome] = useState(false);
 
-  const projetoAtivo = projetos.find((p) => p.id === projectId);
+  // Garante um array seguro mesmo se "projetos" vier como undefined, null ou objeto
+  const listaProjetos = Array.isArray(projetos) ? projetos : [];
+  const projetoAtivo = listaProjetos.find((p) => p.id === projectId);
 
   function alternar() {
     setAberto((prev) => !prev);
@@ -136,7 +138,7 @@ export default function ProjectSwitcher() {
   // mostrar (ex.: acabamos de excluir o único quadro e o novo padrão ainda
   // está sendo provisionado). A confirmação de exclusão já foi fechada no
   // clique (ver confirmarExclusao), então não há nada para preservar aqui.
-  if (carregando || projetos.length === 0) return null;
+  if (carregando || listaProjetos.length === 0) return null;
 
   return (
     <Wrapper>
@@ -153,7 +155,7 @@ export default function ProjectSwitcher() {
 
       {aberto && (
         <Dropdown role="menu">
-          {projetos.map((p) => (
+          {listaProjetos.map((p) => (
             <ProjetoItem
               key={p.id}
               role="menuitemradio"

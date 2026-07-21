@@ -93,8 +93,8 @@ describe("Projects", () => {
         .set("Authorization", `Bearer ${usuario.token}`);
 
       expect(res.status).toBe(200);
-      expect(res.body).toHaveLength(1);
-      expect(res.body[0].name).toBe("Projeto A");
+      expect(res.body.dados).toHaveLength(1);
+      expect(res.body.dados[0].name).toBe("Projeto A");
     });
 
     test("busca um projeto específico por id", async () => {
@@ -393,7 +393,7 @@ describe("Projects", () => {
         .set("Authorization", `Bearer ${membro.token}`);
 
       expect(res.status).toBe(200);
-      expect(res.body.some((p) => p.id === criado.body.id)).toBe(true);
+      expect(res.body.dados.some((p) => p.id === criado.body.id)).toBe(true);
     });
 
     test("admin (não apenas owner) pode criar e excluir projeto", async () => {

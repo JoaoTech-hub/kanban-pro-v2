@@ -21,7 +21,8 @@ export function useProjetos(organizationId, aoOrganizacaoInvalida) {
     setErro(null);
     try {
       const resposta = await api.get(`/organizations/${organizationId}/projects`);
-      let lista = resposta.data;
+      // Extrai o array da chave .dados (novo formato da Fase 6.5) com fallback para array vazio
+      let lista = resposta.data.dados || resposta.data || [];
 
       if (lista.length === 0) {
         // Primeiro acesso: cria o projeto padrão automaticamente, preservando

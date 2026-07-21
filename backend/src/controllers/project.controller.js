@@ -1,4 +1,5 @@
 const projectService = require("../services/project.service");
+const { paginacaoQuerySchema } = require("../validators/schemas");
 
 async function criar(req, res, next) {
   try {
@@ -15,8 +16,11 @@ async function criar(req, res, next) {
 
 async function listar(req, res, next) {
   try {
-    const projects = await projectService.listar(req.organization.id);
-    res.json(projects);
+    // Valida e aplica os padrões de página e limite via Zod
+    const { pagina, limite } = paginacaoQuerySchema.parse(req.query);
+
+    const resultado = await projectService.listar(req.organization.id, { pagina, limite });
+    res.json(resultado);
   } catch (err) {
     next(err);
   }
