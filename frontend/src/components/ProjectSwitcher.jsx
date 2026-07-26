@@ -193,10 +193,12 @@ export default function ProjectSwitcher() {
                       <FiEdit2 size={13} />
                       Renomear
                     </OpcaoMenu>
-                    <OpcaoMenu type="button" $danger onClick={(e) => pedirExclusao(e, p)}>
-                      <FiTrash2 size={13} />
-                      Excluir
-                    </OpcaoMenu>
+                    {listaProjetos.length > 1 && (
+                      <OpcaoMenu type="button" $danger onClick={(e) => pedirExclusao(e, p)}>
+                        <FiTrash2 size={13} />
+                        Excluir
+                      </OpcaoMenu>
+                    )}
                   </MenuOpcoes>
                 )}
               </MenuWrapper>

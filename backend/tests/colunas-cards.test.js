@@ -84,6 +84,40 @@ describe("Colunas e Cards", () => {
 
       expect(res.status).toBe(403);
     });
+
+    test("duas criações concorrentes de coluna no mesmo projeto não geram 'ordem' duplicada (regressão de concorrência)", async () => {
+      const usuario = await registrarUsuario("colConcorrente");
+      const projeto = await criarProjeto(usuario.token, usuario.organizationId);
+
+      // Dispara as duas criações "ao mesmo tempo" — é o cenário que a
+      // trava de linha no projeto (usada dentro de coluna.repository.js
+      // antes de calcular MAX(ordem)+1) precisa cobrir, sem depender de as
+      // chamadas serem sequenciais.
+      const [respostaA, respostaB] = await Promise.all([
+        request(app)
+          .post(`${base(usuario.organizationId, projeto.id)}/colunas`)
+          .set("Authorization", `Bearer ${usuario.token}`)
+          .send({ nome: "Coluna Concorrente A" }),
+        request(app)
+          .post(`${base(usuario.organizationId, projeto.id)}/colunas`)
+          .set("Authorization", `Bearer ${usuario.token}`)
+          .send({ nome: "Coluna Concorrente B" }),
+      ]);
+
+      expect(respostaA.status).toBe(201);
+      expect(respostaB.status).toBe(201);
+      // As 3 colunas padrão já ocupam posições — as duas novas precisam
+      // ficar em posições diferentes uma da outra.
+      expect(respostaA.body.ordem).not.toBe(respostaB.body.ordem);
+
+      const todas = await request(app)
+        .get(`${base(usuario.organizationId, projeto.id)}/colunas`)
+        .set("Authorization", `Bearer ${usuario.token}`);
+
+      const ordens = todas.body.map((c) => c.ordem);
+      const ordensUnicas = new Set(ordens);
+      expect(ordensUnicas.size).toBe(ordens.length);
+    });
   });
 
   describe("Cards", () => {
@@ -313,6 +347,42 @@ describe("Colunas e Cards", () => {
         .set("Authorization", `Bearer ${membro.token}`);
 
       expect(res.status).toBe(403);
+    });
+
+    test("duas criações concorrentes de card na mesma coluna não geram 'ordem' duplicada (regressão de concorrência)", async () => {
+      const usuario = await registrarUsuario("cardConcorrente");
+      const projeto = await criarProjeto(usuario.token, usuario.organizationId);
+      const colunas = await request(app)
+        .get(`${base(usuario.organizationId, projeto.id)}/colunas`)
+        .set("Authorization", `Bearer ${usuario.token}`);
+      const colunaId = colunas.body[0].id;
+
+      // Dispara as duas criações "ao mesmo tempo" — é o cenário que a
+      // trava de linha na coluna (usada dentro de card.repository.js antes
+      // de calcular MAX(ordem)+1) precisa cobrir.
+      const [respostaA, respostaB] = await Promise.all([
+        request(app)
+          .post(`${base(usuario.organizationId, projeto.id)}/cards`)
+          .set("Authorization", `Bearer ${usuario.token}`)
+          .send({ titulo: "Card Concorrente A", colunaId }),
+        request(app)
+          .post(`${base(usuario.organizationId, projeto.id)}/cards`)
+          .set("Authorization", `Bearer ${usuario.token}`)
+          .send({ titulo: "Card Concorrente B", colunaId }),
+      ]);
+
+      expect(respostaA.status).toBe(201);
+      expect(respostaB.status).toBe(201);
+      expect(respostaA.body.ordem).not.toBe(respostaB.body.ordem);
+
+      const todos = await request(app)
+        .get(`${base(usuario.organizationId, projeto.id)}/cards`)
+        .set("Authorization", `Bearer ${usuario.token}`);
+
+      const daColuna = todos.body.filter((c) => c.colunaId === colunaId);
+      const ordens = daColuna.map((c) => c.ordem);
+      const ordensUnicas = new Set(ordens);
+      expect(ordensUnicas.size).toBe(ordens.length);
     });
   });
 });

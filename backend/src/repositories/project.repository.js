@@ -26,12 +26,12 @@ function findAllByOrganization(organizationId, { skip = 0, take = 20 } = {}) {
 // Sempre filtra por organizationId junto do id — nunca busca por id sozinho.
 // Isso é o que impede um usuário de acessar projeto de outra organização
 // mesmo sabendo/adivinhando o UUID.
-function findByIdAndOrganization(id, organizationId) {
-  return prisma.project.findFirst({ where: { id, organizationId } });
+function findByIdAndOrganization(id, organizationId, client = prisma) {
+  return client.project.findFirst({ where: { id, organizationId } });
 }
 
-function deleteByIdAndOrganization(id, organizationId) {
-  return prisma.project.deleteMany({ where: { id, organizationId } });
+function deleteByIdAndOrganization(id, organizationId, client = prisma) {
+  return client.project.deleteMany({ where: { id, organizationId } });
 }
 
 function renomear(id, organizationId, name) {

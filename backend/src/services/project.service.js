@@ -2,7 +2,7 @@ const prisma = require("../config/db");
 const projectRepository = require("../repositories/project.repository");
 const colunaRepository = require("../repositories/coluna.repository");
 const organizationRepository = require("../repositories/organization.repository");
-const { NotFoundError, PlanLimitError } = require("../shared/errors/AppError");
+const { NotFoundError, PlanLimitError, ConflictError } = require("../shared/errors/AppError");
 const { garantirPapelGerencial } = require("../shared/authorization");
 
 const LIMITE_PROJETOS_FREE = 1;
@@ -81,8 +81,35 @@ async function buscarPorId(id, organizationId) {
 async function remover(id, organizationId, organizationRole) {
   garantirPapelGerencial(organizationRole);
 
-  const resultado = await projectRepository.deleteByIdAndOrganization(id, organizationId);
-  if (resultado.count === 0) throw new NotFoundError("Projeto não encontrado");
+  return prisma.$transaction(
+    async (tx) => {
+      // Trava a organização ANTES de contar/decidir — evita que duas
+      // exclusões concorrentes (de quadros diferentes) leiam a mesma
+      // contagem "restam 2" ao mesmo tempo e as duas passem, zerando a
+      // organização. A segunda fica bloqueada até a primeira terminar.
+      await organizationRepository.lockForUpdate(organizationId, tx);
+
+      const alvo = await projectRepository.findByIdAndOrganization(id, organizationId, tx);
+      if (!alvo) throw new NotFoundError("Projeto não encontrado");
+
+      const total = await projectRepository.countByOrganization(organizationId, tx);
+      if (total <= 1) {
+        // Regra única para qualquer plano: nunca se pode ficar sem nenhum
+        // quadro. No plano Free isso, na prática, significa "nunca pode
+        // excluir" (Free nunca tem mais de 1 quadro pra começar); no Pro,
+        // significa "pode excluir, desde que sobre pelo menos outro".
+        throw new ConflictError("Não é possível excluir o último quadro da organização.");
+      }
+
+      const resultado = await projectRepository.deleteByIdAndOrganization(
+        id,
+        organizationId,
+        tx
+      );
+      if (resultado.count === 0) throw new NotFoundError("Projeto não encontrado");
+    },
+    { timeout: 15000 }
+  );
 }
 
 async function renomear(id, organizationId, organizationRole, name) {

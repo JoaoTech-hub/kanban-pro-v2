@@ -126,6 +126,13 @@ describe("Projects", () => {
 
     test("remove um projeto com sucesso", async () => {
       const usuario = await registrarUsuario("crud6");
+      await organizationRepository.updatePlan(usuario.organizationId, "pro");
+
+      // Cria um projeto base para garantir que sobrará pelo menos 1
+      await request(app)
+        .post(`/organizations/${usuario.organizationId}/projects`)
+        .set("Authorization", `Bearer ${usuario.token}`)
+        .send({ name: "Projeto Base" });
 
       const criado = await request(app)
         .post(`/organizations/${usuario.organizationId}/projects`)
@@ -158,6 +165,13 @@ describe("Projects", () => {
 
     test("duas remoções concorrentes do mesmo projeto: uma retorna 204 e a outra 404 (regressão de condição de corrida)", async () => {
       const usuario = await registrarUsuario("crudRemoverConcorrente");
+      await organizationRepository.updatePlan(usuario.organizationId, "pro");
+
+      // Cria um projeto base para garantir que o total não zere
+      await request(app)
+        .post(`/organizations/${usuario.organizationId}/projects`)
+        .set("Authorization", `Bearer ${usuario.token}`)
+        .send({ name: "Projeto Base" });
 
       const criado = await request(app)
         .post(`/organizations/${usuario.organizationId}/projects`)
@@ -260,9 +274,6 @@ describe("Projects", () => {
         .set("Authorization", `Bearer ${usuarioA.token}`)
         .send({ name: "Projeto Privado de A" });
 
-      // Nota: usa a organizationId de B na URL — a mesma defesa que já
-      // protege GET/DELETE (filtrar sempre por id + organizationId) também
-      // vale aqui, então isso precisa dar 404, não 403 nem 204.
       const tentativa = await request(app)
         .patch(`/organizations/${usuarioB.organizationId}/projects/${projetoDeA.body.id}`)
         .set("Authorization", `Bearer ${usuarioB.token}`)
@@ -295,10 +306,6 @@ describe("Projects", () => {
     test("duas criações concorrentes no plano Free: só uma pode passar (regressão de condição de corrida)", async () => {
       const usuario = await registrarUsuario("planFreeConcorrente");
 
-      // Dispara as duas criações "ao mesmo tempo" (sem esperar uma terminar
-      // antes de iniciar a outra) — é o cenário que travar a linha da
-      // organização (organizationRepository.lockForUpdate) precisa cobrir,
-      // e que a checagem antiga (contar fora da transação) não cobria.
       const [respostaA, respostaB] = await Promise.all([
         request(app)
           .post(`/organizations/${usuario.organizationId}/projects`)
@@ -311,16 +318,12 @@ describe("Projects", () => {
       ]);
 
       const statuses = [respostaA.status, respostaB.status].sort();
-      // Exatamente uma das duas deve ter sido aceita (201) e a outra
-      // rejeitada pelo limite do plano (403) — nunca as duas com sucesso.
       expect(statuses).toEqual([201, 403]);
 
       const vencedora = respostaA.status === 201 ? respostaA : respostaB;
       const rejeitada = respostaA.status === 201 ? respostaB : respostaA;
       expect(rejeitada.body.erro).toMatch(/plano gratuito/i);
 
-      // Confere no banco que realmente sobrou só 1 projeto — não basta a
-      // resposta HTTP estar certa, o dado persistido precisa bater também.
       const total = await prisma.project.count({
         where: { organizationId: usuario.organizationId },
       });
@@ -344,6 +347,115 @@ describe("Projects", () => {
 
       expect(primeiro.status).toBe(201);
       expect(segundo.status).toBe(201);
+    });
+  });
+
+  describe("Regra: nunca excluir o último quadro da organização", () => {
+    test("plano Free: bloqueia excluir o único quadro existente (409)", async () => {
+      const usuario = await registrarUsuario("semUltimoFree");
+
+      const criado = await request(app)
+        .post(`/organizations/${usuario.organizationId}/projects`)
+        .set("Authorization", `Bearer ${usuario.token}`)
+        .send({ name: "Único Quadro" });
+
+      const res = await request(app)
+        .delete(`/organizations/${usuario.organizationId}/projects/${criado.body.id}`)
+        .set("Authorization", `Bearer ${usuario.token}`);
+
+      expect(res.status).toBe(409);
+      expect(res.body.erro).toMatch(/último quadro/i);
+
+      const total = await prisma.project.count({
+        where: { organizationId: usuario.organizationId },
+      });
+      expect(total).toBe(1);
+    });
+
+    test("plano Pro: permite excluir um quadro desde que sobre pelo menos outro", async () => {
+      const usuario = await registrarUsuario("semUltimoProA");
+      await organizationRepository.updatePlan(usuario.organizationId, "pro");
+
+      const primeiro = await request(app)
+        .post(`/organizations/${usuario.organizationId}/projects`)
+        .set("Authorization", `Bearer ${usuario.token}`)
+        .send({ name: "Quadro 1" });
+      const segundo = await request(app)
+        .post(`/organizations/${usuario.organizationId}/projects`)
+        .set("Authorization", `Bearer ${usuario.token}`)
+        .send({ name: "Quadro 2" });
+
+      const res = await request(app)
+        .delete(`/organizations/${usuario.organizationId}/projects/${primeiro.body.id}`)
+        .set("Authorization", `Bearer ${usuario.token}`);
+
+      expect(res.status).toBe(204);
+
+      const total = await prisma.project.count({
+        where: { organizationId: usuario.organizationId },
+      });
+      expect(total).toBe(1);
+
+      const restante = await prisma.project.findFirst({
+        where: { organizationId: usuario.organizationId },
+      });
+      expect(restante.id).toBe(segundo.body.id);
+    });
+
+    test("plano Pro: depois de excluir até sobrar 1, esse último também fica bloqueado", async () => {
+      const usuario = await registrarUsuario("semUltimoProB");
+      await organizationRepository.updatePlan(usuario.organizationId, "pro");
+
+      const primeiro = await request(app)
+        .post(`/organizations/${usuario.organizationId}/projects`)
+        .set("Authorization", `Bearer ${usuario.token}`)
+        .send({ name: "Quadro 1" });
+      const segundo = await request(app)
+        .post(`/organizations/${usuario.organizationId}/projects`)
+        .set("Authorization", `Bearer ${usuario.token}`)
+        .send({ name: "Quadro 2" });
+
+      const primeiraExclusao = await request(app)
+        .delete(`/organizations/${usuario.organizationId}/projects/${primeiro.body.id}`)
+        .set("Authorization", `Bearer ${usuario.token}`);
+      expect(primeiraExclusao.status).toBe(204);
+
+      const segundaExclusao = await request(app)
+        .delete(`/organizations/${usuario.organizationId}/projects/${segundo.body.id}`)
+        .set("Authorization", `Bearer ${usuario.token}`);
+
+      expect(segundaExclusao.status).toBe(409);
+    });
+
+    test("duas exclusões concorrentes com só 2 quadros restando: só uma pode passar (regressão de condição de corrida)", async () => {
+      const usuario = await registrarUsuario("semUltimoConcorrente");
+      await organizationRepository.updatePlan(usuario.organizationId, "pro");
+
+      const quadroA = await request(app)
+        .post(`/organizations/${usuario.organizationId}/projects`)
+        .set("Authorization", `Bearer ${usuario.token}`)
+        .send({ name: "Quadro A" });
+      const quadroB = await request(app)
+        .post(`/organizations/${usuario.organizationId}/projects`)
+        .set("Authorization", `Bearer ${usuario.token}`)
+        .send({ name: "Quadro B" });
+
+      const [respostaA, respostaB] = await Promise.all([
+        request(app)
+          .delete(`/organizations/${usuario.organizationId}/projects/${quadroA.body.id}`)
+          .set("Authorization", `Bearer ${usuario.token}`),
+        request(app)
+          .delete(`/organizations/${usuario.organizationId}/projects/${quadroB.body.id}`)
+          .set("Authorization", `Bearer ${usuario.token}`),
+      ]);
+
+      const statuses = [respostaA.status, respostaB.status].sort();
+      expect(statuses).toEqual([204, 409]);
+
+      const total = await prisma.project.count({
+        where: { organizationId: usuario.organizationId },
+      });
+      expect(total).toBe(1);
     });
   });
 
@@ -400,6 +512,13 @@ describe("Projects", () => {
       const owner = await registrarUsuario("roleOwner4");
       const admin = await registrarUsuario("roleAdmin1");
       await adicionarMembro(owner.organizationId, admin.token, "admin");
+      await organizationRepository.updatePlan(owner.organizationId, "pro");
+
+      // Cria um projeto base para garantir que sobrará 1 quando o admin excluir o dele
+      await request(app)
+        .post(`/organizations/${owner.organizationId}/projects`)
+        .set("Authorization", `Bearer ${owner.token}`)
+        .send({ name: "Projeto Base" });
 
       const criar = await request(app)
         .post(`/organizations/${owner.organizationId}/projects`)
