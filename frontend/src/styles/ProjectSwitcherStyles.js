@@ -27,7 +27,7 @@ export const Trigger = styled.button`
     white-space: nowrap;
   }
 
-  svg {
+  & > svg {
     flex-shrink: 0;
     transform: rotate(${({ $aberto }) => ($aberto ? "180deg" : "0")});
     transition: transform 0.15s;
@@ -35,6 +35,19 @@ export const Trigger = styled.button`
 
   &:hover {
     border-color: ${({ theme }) => theme.primary};
+  }
+`;
+
+export const TriggerContent = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  overflow: hidden;
+  flex: 1;
+
+  svg {
+    color: ${({ theme }) => theme.primary};
+    flex-shrink: 0;
   }
 `;
 
@@ -81,10 +94,33 @@ export const ProjetoNome = styled.span`
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  flex: 1;
 
   svg {
     color: ${({ theme }) => theme.primary};
     flex-shrink: 0;
+  }
+`;
+
+export const TipoBadge = styled.span`
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  background: ${({ theme }) => theme.border}66;
+  color: ${({ theme }) => theme.text};
+  opacity: 0.85;
+  flex-shrink: 0;
+
+  svg {
+    color: inherit;
+    width: 11px;
+    height: 11px;
   }
 `;
 

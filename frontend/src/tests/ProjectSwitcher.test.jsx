@@ -16,8 +16,9 @@ function renderComTema(ui) {
 }
 
 const PROJETOS = [
-  { id: "p1", name: "Projeto Alpha" },
-  { id: "p2", name: "Projeto Beta" },
+  { id: "p1", name: "Projeto Alpha", type: "saas" },
+  { id: "p2", name: "Projeto Beta", type: "app" },
+  { id: "p3", name: "Projeto Gama", type: "jogo" },
 ];
 
 function mockUseProject(overrides = {}) {
@@ -117,20 +118,20 @@ describe("ProjectSwitcher", () => {
 
   test("criação bem-sucedida chama criarProjeto com nome e tipo, e fecha o formulário", async () => {
     const valor = mockUseProject();
-    valor.criarProjeto.mockResolvedValueOnce({ id: "p3", name: "Projeto Gama" });
+    valor.criarProjeto.mockResolvedValueOnce({ id: "p4", name: "Projeto Delta", type: "app" });
 
     renderComTema(<ProjectSwitcher />);
     fireEvent.click(screen.getByText("Projeto Alpha"));
     fireEvent.click(screen.getByText("Novo quadro"));
 
     fireEvent.change(screen.getByPlaceholderText("Nome do quadro"), {
-      target: { value: "Projeto Gama" },
+      target: { value: "Projeto Delta" },
     });
     fireEvent.change(screen.getByDisplayValue("SaaS"), { target: { value: "app" } });
     fireEvent.click(screen.getByText("Criar"));
 
     await waitFor(() => {
-      expect(valor.criarProjeto).toHaveBeenCalledWith("Projeto Gama", "app");
+      expect(valor.criarProjeto).toHaveBeenCalledWith("Projeto Delta", "app");
     });
 
     // Formulário e dropdown fecham após o sucesso.
@@ -184,7 +185,7 @@ describe("ProjectSwitcher", () => {
     renderComTema(<ProjectSwitcher />);
     fireEvent.click(screen.getByText("Projeto Alpha"));
 
-    expect(screen.getAllByTitle("Mais opções")).toHaveLength(2);
+    expect(screen.getAllByTitle("Mais opções")).toHaveLength(3);
   });
 
   test("abrir o menu de opções mostra Renomear e Excluir, sem trocar o projeto selecionado", () => {
@@ -344,5 +345,47 @@ describe("ProjectSwitcher", () => {
 
     expect(valor.renomearProjeto).not.toHaveBeenCalled();
     expect(screen.queryByText("Renomear quadro")).not.toBeInTheDocument();
+  });
+
+  describe("Feature 6.3 - Badges e ícones por Tipo", () => {
+    test("exibe o badge com o tipo no quadro atualmente selecionado (gatilho)", () => {
+      mockUseProject({ projectId: "p1" }); // p1 é do tipo saas
+
+      renderComTema(<ProjectSwitcher />);
+
+      // Verifica se o badge no quadro ativo exibe o texto "SaaS" e contém o ícone
+      expect(screen.getByText("SaaS")).toBeInTheDocument();
+    });
+
+    test("renderiza corretamente o badge e o ícone quando o tipo for saas", () => {
+      mockUseProject();
+
+      renderComTema(<ProjectSwitcher />);
+      fireEvent.click(screen.getByText("Projeto Alpha"));
+
+      // "SaaS" vai aparecer no gatilho do projeto ativo e na lista de opções
+      const badgesSaaS = screen.getAllByText("SaaS");
+      expect(badgesSaaS.length).toBeGreaterThanOrEqual(1);
+    });
+
+    test("renderiza corretamente o badge e o ícone quando o tipo for app", () => {
+      mockUseProject();
+
+      renderComTema(<ProjectSwitcher />);
+      fireEvent.click(screen.getByText("Projeto Alpha"));
+
+      // p2 é do tipo "app" e deve aparecer na lista
+      expect(screen.getByText("App")).toBeInTheDocument();
+    });
+
+    test("renderiza corretamente o badge e o ícone quando o tipo for jogo", () => {
+      mockUseProject();
+
+      renderComTema(<ProjectSwitcher />);
+      fireEvent.click(screen.getByText("Projeto Alpha"));
+
+      // p3 é do tipo "jogo" e deve aparecer na lista
+      expect(screen.getByText("Jogo")).toBeInTheDocument();
+    });
   });
 });

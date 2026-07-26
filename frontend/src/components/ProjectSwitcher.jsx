@@ -1,14 +1,27 @@
 import { useState } from "react";
-import { FiChevronDown, FiPlus, FiCheck, FiX, FiMoreVertical, FiEdit2, FiTrash2 } from "react-icons/fi";
+import { 
+  FiChevronDown, 
+  FiPlus, 
+  FiCheck, 
+  FiX, 
+  FiMoreVertical, 
+  FiEdit2, 
+  FiTrash2,
+  FiCloud,
+  FiSmartphone,
+  FiPlay
+} from "react-icons/fi";
 import { useProject } from "../context/ProjectContext";
 import ConfirmModal from "./ConfirmModal";
 import ProjectRenameModal from "./ProjectRenameModal";
 import {
   Wrapper,
   Trigger,
+  TriggerContent,
   Dropdown,
   ProjetoItem,
   ProjetoNome,
+  TipoBadge,
   MenuWrapper,
   MaisBotao,
   MenuOpcoes,
@@ -23,6 +36,18 @@ import {
   CancelarButton,
   ErroTexto,
 } from "../styles/ProjectSwitcherStyles";
+
+const getTipoConfig = (tipo) => {
+  switch (tipo) {
+    case "app":
+      return { label: "App", icone: <FiSmartphone /> };
+    case "jogo":
+      return { label: "Jogo", icone: <FiPlay /> };
+    case "saas":
+    default:
+      return { label: "SaaS", icone: <FiCloud /> };
+  }
+};
 
 export default function ProjectSwitcher() {
   const {
@@ -149,61 +174,76 @@ export default function ProjectSwitcher() {
         aria-haspopup="menu"
         aria-label="Selecionar quadro"
       >
-        <span>{projetoAtivo?.name ?? "Selecionar quadro"}</span>
+        <TriggerContent>
+          {projetoAtivo && getTipoConfig(projetoAtivo.type).icone}
+          <span>{projetoAtivo?.name ?? "Selecionar quadro"}</span>
+          {projetoAtivo && (
+            <TipoBadge>
+              {getTipoConfig(projetoAtivo.type).label}
+            </TipoBadge>
+          )}
+        </TriggerContent>
         <FiChevronDown size={16} />
       </Trigger>
 
       {aberto && (
         <Dropdown role="menu">
-          {listaProjetos.map((p) => (
-            <ProjetoItem
-              key={p.id}
-              role="menuitemradio"
-              aria-checked={p.id === projectId}
-              tabIndex={0}
-              $ativo={p.id === projectId}
-              onClick={() => escolher(p.id)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" || e.key === " ") {
-                  e.preventDefault();
-                  escolher(p.id);
-                }
-              }}
-            >
-              <ProjetoNome>
-                {p.name}
-                {p.id === projectId && <FiCheck size={14} />}
-              </ProjetoNome>
+          {listaProjetos.map((p) => {
+            const configTipo = getTipoConfig(p.type);
+            return (
+              <ProjetoItem
+                key={p.id}
+                role="menuitemradio"
+                aria-checked={p.id === projectId}
+                tabIndex={0}
+                $ativo={p.id === projectId}
+                onClick={() => escolher(p.id)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    escolher(p.id);
+                  }
+                }}
+              >
+                <ProjetoNome>
+                  {configTipo.icone}
+                  <span>{p.name}</span>
+                  <TipoBadge>
+                    {configTipo.label}
+                  </TipoBadge>
+                  {p.id === projectId && <FiCheck size={14} />}
+                </ProjetoNome>
 
-              <MenuWrapper>
-                <MaisBotao
-                  type="button"
-                  title="Mais opções"
-                  aria-label={`Mais opções para ${p.name}`}
-                  aria-haspopup="menu"
-                  aria-expanded={menuAbertoId === p.id}
-                  onClick={(e) => alternarMenu(e, p.id)}
-                >
-                  <FiMoreVertical size={14} />
-                </MaisBotao>
+                <MenuWrapper>
+                  <MaisBotao
+                    type="button"
+                    title="Mais opções"
+                    aria-label={`Mais opções para ${p.name}`}
+                    aria-haspopup="menu"
+                    aria-expanded={menuAbertoId === p.id}
+                    onClick={(e) => alternarMenu(e, p.id)}
+                  >
+                    <FiMoreVertical size={14} />
+                  </MaisBotao>
 
-                {menuAbertoId === p.id && (
-                  <MenuOpcoes role="menu" onClick={(e) => e.stopPropagation()}>
-                    <OpcaoMenu type="button" onClick={(e) => abrirRenomear(e, p)}>
-                      <FiEdit2 size={13} />
-                      Renomear
-                    </OpcaoMenu>
-                    {listaProjetos.length > 1 && (
-                      <OpcaoMenu type="button" $danger onClick={(e) => pedirExclusao(e, p)}>
-                        <FiTrash2 size={13} />
-                        Excluir
+                  {menuAbertoId === p.id && (
+                    <MenuOpcoes role="menu" onClick={(e) => e.stopPropagation()}>
+                      <OpcaoMenu type="button" onClick={(e) => abrirRenomear(e, p)}>
+                        <FiEdit2 size={13} />
+                        Renomear
                       </OpcaoMenu>
-                    )}
-                  </MenuOpcoes>
-                )}
-              </MenuWrapper>
-            </ProjetoItem>
-          ))}
+                      {listaProjetos.length > 1 && (
+                        <OpcaoMenu type="button" $danger onClick={(e) => pedirExclusao(e, p)}>
+                          <FiTrash2 size={13} />
+                          Excluir
+                        </OpcaoMenu>
+                      )}
+                    </MenuOpcoes>
+                  )}
+                </MenuWrapper>
+              </ProjetoItem>
+            );
+          })}
 
           <Divisor />
 
