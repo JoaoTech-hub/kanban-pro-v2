@@ -68,7 +68,7 @@ describe("RedefinirSenha", () => {
     expect(api.post).not.toHaveBeenCalled();
   });
 
-  test("bloqueia o envio quando a senha tem menos de 6 caracteres, sem chamar a API", () => {
+  test("bloqueia o envio quando a senha não cumpre a política de senha forte, sem chamar a API", () => {
     renderPagina();
 
     fireEvent.change(screen.getByPlaceholderText("Nova senha"), {
@@ -80,7 +80,9 @@ describe("RedefinirSenha", () => {
     fireEvent.click(screen.getByText("Redefinir senha"));
 
     expect(
-      screen.getByText("A senha deve ter pelo menos 6 caracteres.")
+      screen.getByText(
+        "A senha deve ter pelo menos 8 caracteres, contendo pelo menos uma letra e um número."
+      )
     ).toBeInTheDocument();
     expect(api.post).not.toHaveBeenCalled();
   });

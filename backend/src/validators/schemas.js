@@ -1,9 +1,19 @@
 const { z } = require("zod");
 
+const MENSAGEM_ERRO_SENHA =
+  "A senha deve ter pelo menos 8 caracteres, contendo pelo menos uma letra e um número.";
+
+const senhaForteSchema = z
+  .string({ required_error: "A senha é obrigatória" })
+  .min(8, MENSAGEM_ERRO_SENHA)
+  .max(200)
+  .regex(/[a-zA-Z]/, MENSAGEM_ERRO_SENHA)
+  .regex(/[0-9]/, MENSAGEM_ERRO_SENHA);
+
 const registroSchema = z.object({
   nome: z.string().trim().min(1, "Nome é obrigatório").max(100),
   email: z.string().trim().toLowerCase().email("E-mail inválido").max(160),
-  senha: z.string().min(6, "Senha deve ter ao menos 6 caracteres").max(200),
+  senha: senhaForteSchema,
 });
 
 const loginSchema = z.object({
@@ -43,7 +53,7 @@ const perfilSchema = z.object({
 
 const senhaSchema = z.object({
   senhaAtual: z.string().min(1, "Informe a senha atual"),
-  novaSenha: z.string().min(6, "A nova senha deve ter pelo menos 6 caracteres").max(200),
+  novaSenha: senhaForteSchema,
 });
 
 const esqueciSenhaSchema = z.object({
@@ -52,7 +62,7 @@ const esqueciSenhaSchema = z.object({
 
 const redefinirSenhaSchema = z.object({
   token: z.string().min(10, "Token inválido"),
-  novaSenha: z.string().min(6, "A nova senha deve ter pelo menos 6 caracteres").max(200),
+  novaSenha: senhaForteSchema,
 });
 
 const paginacaoQuerySchema = z.object({

@@ -109,15 +109,15 @@ const Avatar = styled.div`
 export default function Perfil() {
   const { nome: nomeCtx } = useAuth();
 
-  const [nome,     setNome]     = useState("");
-  const [email,    setEmail]    = useState("");
-  const [msgNome,  setMsgNome]  = useState(null);
+  const [nome,         setNome]        = useState("");
+  const [email,        setEmail]       = useState("");
+  const [msgNome,      setMsgNome]     = useState(null);
   const [salvandoNome, setSalvandoNome] = useState(false);
 
-  const [senhaAtual,  setSenhaAtual]  = useState("");
-  const [novaSenha,   setNovaSenha]   = useState("");
-  const [confirmar,   setConfirmar]   = useState("");
-  const [msgSenha,    setMsgSenha]    = useState(null);
+  const [senhaAtual,    setSenhaAtual]    = useState("");
+  const [novaSenha,     setNovaSenha]     = useState("");
+  const [confirmar,     setConfirmar]     = useState("");
+  const [msgSenha,      setMsgSenha]      = useState(null);
   const [salvandoSenha, setSalvandoSenha] = useState(false);
 
   useEffect(() => {
@@ -148,8 +148,11 @@ export default function Perfil() {
       setMsgSenha({ texto: "As senhas não coincidem.", erro: true });
       return;
     }
-    if (novaSenha.length < 6) {
-      setMsgSenha({ texto: "A nova senha deve ter pelo menos 6 caracteres.", erro: true });
+    if (novaSenha.length < 8 || !/[a-zA-Z]/.test(novaSenha) || !/[0-9]/.test(novaSenha)) {
+      setMsgSenha({
+        texto: "A senha deve ter pelo menos 8 caracteres, contendo pelo menos uma letra e um número.",
+        erro: true,
+      });
       return;
     }
     setSalvandoSenha(true);

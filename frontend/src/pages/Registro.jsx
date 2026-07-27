@@ -31,8 +31,12 @@ export default function Registro() {
       setErro("As senhas não coincidem.");
       return;
     }
-    if (senha.length < 6) {
-      setErro("A senha deve ter pelo menos 6 caracteres.");
+
+  const MENSAGEM_ERRO_SENHA =
+  "A senha deve ter pelo menos 8 caracteres, contendo pelo menos uma letra e um número.";
+
+    if (senha.length < 8 || !/[a-zA-Z]/.test(senha) || !/[0-9]/.test(senha)) {
+      setErro(MENSAGEM_ERRO_SENHA);
       return;
     }
 

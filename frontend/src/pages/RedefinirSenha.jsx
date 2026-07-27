@@ -32,8 +32,8 @@ export default function RedefinirSenha() {
       setErro("As senhas não coincidem.");
       return;
     }
-    if (novaSenha.length < 6) {
-      setErro("A senha deve ter pelo menos 6 caracteres.");
+    if (novaSenha.length < 8 || !/[a-zA-Z]/.test(novaSenha) || !/[0-9]/.test(novaSenha)) {
+      setErro("A senha deve ter pelo menos 8 caracteres, contendo pelo menos uma letra e um número.");
       return;
     }
 
