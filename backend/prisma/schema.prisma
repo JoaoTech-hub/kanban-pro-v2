@@ -16,6 +16,7 @@ model Organization {
   createdAt DateTime             @default(now()) @map("created_at")
   members   OrganizationMember[]
   projects  Project[]
+  invites   OrganizationInvite[]
 
   @@map("organizations")
 }
@@ -29,6 +30,7 @@ model User {
   tokenVersion        Int                  @default(0) @map("token_version")
   memberships         OrganizationMember[]
   passwordResetTokens PasswordResetToken[]
+  sentInvites OrganizationInvite[] @relation("InvitedByRelation")
 
   @@map("users")
 }
@@ -122,4 +124,38 @@ enum Prioridade {
   baixa
   media
   alta
+}
+
+enum InviteStatus {
+  pending
+  accepted
+  revoked
+  expired
+}
+
+model OrganizationInvite {
+  id             String       @id @default(uuid())
+  email          String
+  role           PapelMembro  @default(member)
+  status         InviteStatus @default(pending)
+  tokenHash      String       @unique @map("token_hash")
+  expiresAt      DateTime     @map("expires_at")
+  createdAt      DateTime     @default(now()) @map("created_at")
+  updatedAt      DateTime     @updatedAt @map("updated_at")
+
+  // Relacionamento com o Tenant
+  organizationId String       @map("organization_id")
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  // Auditoria de Rastreabilidade (SetNull se o criador for removido)
+  invitedById    String?      @map("invited_by_id")
+  invitedBy      User?        @relation("InvitedByRelation", fields: [invitedById], references: [id], onDelete: SetNull)
+
+  // Índices para otimização de consultas e escalabilidade SaaS
+  @@index([organizationId])
+  @@index([organizationId, status])
+  @@index([email, organizationId])
+  @@index([expiresAt])
+
+  @@map("organization_invites")
 }
