@@ -1,6 +1,7 @@
 const env = require("../../config/env");
 const resendProvider = require("./providers/resendProvider");
 const { renderResetSenha } = require("./templates/resetSenha");
+const { renderConvite } = require("./templates/convite");
 
 // Registro de providers disponíveis. Trocar de provedor é: (1) criar um
 // arquivo em providers/ seguindo o mesmo contrato (enviar({to, subject, html})),
@@ -33,4 +34,10 @@ async function enviarResetSenha({ to, nome, link }) {
   await provider.enviar({ to, subject: assunto, html });
 }
 
-module.exports = { enviarResetSenha };
+async function enviarConvite({ to, nomeOrganizacao, nomeConvidante, link }) {
+  const { assunto, html } = renderConvite({ nomeOrganizacao, nomeConvidante, link });
+  const provider = obterProvider();
+  await provider.enviar({ to, subject: assunto, html });
+}
+
+module.exports = { enviarResetSenha, enviarConvite };

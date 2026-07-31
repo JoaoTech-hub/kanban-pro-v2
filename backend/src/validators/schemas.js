@@ -65,6 +65,24 @@ const redefinirSenhaSchema = z.object({
   novaSenha: senhaForteSchema,
 });
 
+// "owner" nunca é um valor aceito vindo do client — conceder owner por
+// convite não é suportado (ver shared/authorization.js, garantirPodeAtribuirRole).
+const conviteSchema = z.object({
+  email: z.string().trim().toLowerCase().email("E-mail inválido").max(160),
+  role: z.enum(["admin", "member"]).optional().default("member"),
+});
+
+const alterarRoleSchema = z.object({
+  role: z.enum(["admin", "member"]),
+});
+
+// Aceite de convite para quem AINDA NÃO tem conta — cria conta + vínculo
+// na mesma operação. Reaproveita a mesma política de senha forte do resto do sistema.
+const aceitarConviteContaNovaSchema = z.object({
+  nome: z.string().trim().min(1, "Nome é obrigatório").max(100),
+  senha: senhaForteSchema,
+});
+
 const paginacaoQuerySchema = z.object({
   pagina: z.coerce.number().int().min(1).default(1),
   limite: z.coerce.number().int().min(1).max(100).default(20),
@@ -95,5 +113,8 @@ module.exports = {
   esqueciSenhaSchema,
   redefinirSenhaSchema,
   paginacaoQuerySchema,
+  conviteSchema,
+  alterarRoleSchema,
+  aceitarConviteContaNovaSchema,
   validar,
 };

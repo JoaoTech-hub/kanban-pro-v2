@@ -24,6 +24,8 @@ const Projetos = lazy(() => import("./pages/Projetos"));
 const Tarefas = lazy(() => import("./pages/Tarefas"));
 const Perfil = lazy(() => import("./pages/Perfil"));
 const Configuracoes = lazy(() => import("./pages/Configuracoes"));
+const Equipe = lazy(() => import("./pages/Equipe"));
+const AceitarConvite = lazy(() => import("./pages/AceitarConvite"));
 
 // Componente interno para acessar o ThemeContext
 function ThemedApp() {
@@ -41,6 +43,16 @@ function ThemedApp() {
               <Route path="/registro" element={<Registro />} />
               <Route path="/esqueci-senha" element={<EsqueciSenha />} />
               <Route path="/redefinir-senha" element={<RedefinirSenha />} />
+              <Route path="/convites/:token" element={<AceitarConvite />} />
+
+              <Route
+                path="/equipe"
+                element={
+                  <ProtectedRoute>
+                    <Equipe />
+                  </ProtectedRoute>
+                }
+              />
 
               <Route
                 path="/dashboard"

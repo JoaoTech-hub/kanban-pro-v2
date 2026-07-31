@@ -20,6 +20,7 @@ async function autenticar(req, res, next) {
     }
 
     req.usuarioId = dados.id;
+    req.user = user;
     next();
   } catch {
     res.status(401).json({ erro: "Token inválido" });

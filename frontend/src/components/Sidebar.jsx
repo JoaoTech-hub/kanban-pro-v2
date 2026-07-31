@@ -18,6 +18,7 @@ import {
   FiClipboard,
   FiSettings,
   FiUser,
+  FiUsers,
   FiMenu,
   FiX,
 } from "react-icons/fi";
@@ -26,6 +27,7 @@ const itens = [
   { label: "Dashboard", icone: FiGrid, rota: "/dashboard" },
   { label: "Colunas", icone: FiFolder, rota: "/projetos" },
   { label: "Tarefas", icone: FiClipboard, rota: "/tarefas" },
+  { label: "Equipe", icone: FiUsers, rota: "/equipe" },
   { label: "Perfil", icone: FiUser, rota: "/perfil" },
   { label: "Configurações", icone: FiSettings, rota: "/configuracoes" },
 ];

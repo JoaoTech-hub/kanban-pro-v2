@@ -4,6 +4,10 @@ const cors = require("cors");
 const helmet = require("helmet");
 
 const authRoutes = require("./routes/auth.routes");
+const organizationRoutes = require("./routes/organization.routes");
+const memberRoutes = require("./routes/member.routes");
+const inviteRoutes = require("./routes/invite.routes");
+const conviteRoutes = require("./routes/convite.routes");
 const projectRoutes = require("./routes/project.routes");
 const colunasRoutes = require("./routes/colunas.routes");
 const cardsRoutes = require("./routes/cards.routes");
@@ -67,6 +71,10 @@ app.get("/", (req, res) => {
 
 // Rotas
 app.use("/", authRoutes);
+app.use("/convites", conviteRoutes);
+app.use("/organizations", organizationRoutes);
+app.use("/organizations/:organizationId/members", memberRoutes);
+app.use("/organizations/:organizationId/invites", inviteRoutes);
 app.use("/organizations/:organizationId/projects", projectRoutes);
 app.use("/organizations/:organizationId/projects/:projectId/colunas", colunasRoutes);
 app.use("/organizations/:organizationId/projects/:projectId/cards", cardsRoutes);
