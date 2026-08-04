@@ -3,6 +3,7 @@ import { useNavigate, useLocation } from "react-router-dom";
 import api from "../services/api";
 import { useAuth } from "../context/AuthContext";
 import { useToast } from "../context/ToastContext";
+import { useOrganizacoes } from "../hooks/useOrganizacoes";
 import {
   PageWrapper,
   Card,
@@ -20,6 +21,7 @@ export default function Login() {
   const [erro, setErro] = useState("");
   const [carregando, setCarregando] = useState(false);
   const { login, trocarOrganizacao } = useAuth();
+  const { carregar: carregarOrganizacoes } = useOrganizacoes();
   const { showToast } = useToast();
   const navigate = useNavigate();
   const location = useLocation();
@@ -47,6 +49,10 @@ export default function Login() {
         try {
           const aceite = await api.post(`/convites/${conviteToken}/aceitar-existente`);
           trocarOrganizacao(aceite.data.organizationId);
+          // Mesma razão do fluxo de conta nova: a organização recém-aceita
+          // não existe na lista em memória do OrganizationsContext até
+          // recarregar — sem isso, o seletor/Equipe não a veriam sem F5.
+          await carregarOrganizacoes();
           showToast("Convite aceito com sucesso!", "sucesso");
         } catch (err) {
           // O login em si já deu certo — só o aceite do convite falhou

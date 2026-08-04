@@ -86,7 +86,14 @@ const Botao = styled.button`
   }
 `;
 
-export default function ConfirmModal({ aberto, titulo, mensagem, confirmar, cancelar }) {
+export default function ConfirmModal({
+  aberto,
+  titulo,
+  mensagem,
+  confirmar,
+  cancelar,
+  textoConfirmar = "Excluir",
+}) {
   useEffect(() => {
     if (!aberto) return;
     function onKeyDown(e) {
@@ -117,7 +124,7 @@ export default function ConfirmModal({ aberto, titulo, mensagem, confirmar, canc
         <Footer>
           <Botao onClick={cancelar}>Cancelar</Botao>
           <Botao $danger onClick={confirmar} autoFocus>
-            Excluir
+            {textoConfirmar}
           </Botao>
         </Footer>
       </Box>

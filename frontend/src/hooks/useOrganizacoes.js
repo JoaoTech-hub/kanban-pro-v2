@@ -1,27 +1,9 @@
-import { useState, useCallback } from "react";
-import api from "../services/api";
+import { useOrganizationsContext } from "../context/OrganizationsContext";
 
-// Suporte a multi-org (Feature 6.8): um usuário pode pertencer a mais de
-// uma organização (a que criou no registro + qualquer uma pra qual foi
-// convidado). Este hook busca essa lista para o seletor de organização.
+// Mantido como hook (mesma assinatura/API de antes) para não exigir nenhuma
+// mudança nos componentes que já o consomem (Equipe.jsx, OrganizationSwitcher.jsx).
+// Por baixo, agora só repassa o estado compartilhado do OrganizationsContext —
+// resolve a sincronização entre Sidebar e Equipe sem duplicar lógica.
 export function useOrganizacoes() {
-  const [organizacoes, setOrganizacoes] = useState([]);
-  const [carregando, setCarregando] = useState(true);
-  const [erro, setErro] = useState(null);
-
-  const carregar = useCallback(async () => {
-    setCarregando(true);
-    setErro(null);
-    try {
-      const resposta = await api.get("/organizations");
-      setOrganizacoes(resposta.data || []);
-    } catch (e) {
-      console.error(e);
-      setErro("Não foi possível carregar suas organizações.");
-    } finally {
-      setCarregando(false);
-    }
-  }, []);
-
-  return { organizacoes, carregando, erro, carregar };
+  return useOrganizationsContext();
 }

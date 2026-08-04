@@ -83,6 +83,16 @@ const aceitarConviteContaNovaSchema = z.object({
   senha: senhaForteSchema,
 });
 
+const transferirOwnershipSchema = z.object({
+  novoOwnerUserId: z.string().uuid("ID de usuário inválido"),
+});
+
+// Mesmo padrão de projectRenameSchema (já existente) — só o campo name,
+// nada de slug/plan por aqui (fora de escopo desta ação).
+const atualizarOrganizacaoSchema = z.object({
+  name: z.string().trim().min(1, "Nome da organização é obrigatório").max(120),
+});
+
 const paginacaoQuerySchema = z.object({
   pagina: z.coerce.number().int().min(1).default(1),
   limite: z.coerce.number().int().min(1).max(100).default(20),
@@ -116,5 +126,7 @@ module.exports = {
   conviteSchema,
   alterarRoleSchema,
   aceitarConviteContaNovaSchema,
+  transferirOwnershipSchema,
+  atualizarOrganizacaoSchema,
   validar,
 };

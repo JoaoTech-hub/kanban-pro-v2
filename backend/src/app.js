@@ -5,6 +5,7 @@ const helmet = require("helmet");
 
 const authRoutes = require("./routes/auth.routes");
 const organizationRoutes = require("./routes/organization.routes");
+const organizationDetailRoutes = require("./routes/organizationDetail.routes");
 const memberRoutes = require("./routes/member.routes");
 const inviteRoutes = require("./routes/invite.routes");
 const conviteRoutes = require("./routes/convite.routes");
@@ -73,6 +74,7 @@ app.get("/", (req, res) => {
 app.use("/", authRoutes);
 app.use("/convites", conviteRoutes);
 app.use("/organizations", organizationRoutes);
+app.use("/organizations/:organizationId", organizationDetailRoutes);
 app.use("/organizations/:organizationId/members", memberRoutes);
 app.use("/organizations/:organizationId/invites", inviteRoutes);
 app.use("/organizations/:organizationId/projects", projectRoutes);

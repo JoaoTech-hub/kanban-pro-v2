@@ -1,12 +1,17 @@
 import { useState, useCallback } from "react";
 import api from "../services/api";
 import { useToast } from "../context/ToastContext";
+import { useOrganizacoes } from "./useOrganizacoes";
 
 export function useEquipe(organizationId) {
   const [membros, setMembros] = useState([]);
   const [convites, setConvites] = useState([]);
   const [carregando, setCarregando] = useState(true);
   const { showToast } = useToast();
+  // Precisamos disso só pra atualizar o role do usuário atual (souOwner etc.)
+  // depois de transferir ownership — carregar()/removerMembro/alterarRole
+  // de membros de EQUIPE continuam só no estado local deste hook.
+  const { carregar: recarregarOrganizacoes } = useOrganizacoes();
 
   const carregar = useCallback(async () => {
     if (!organizationId) return;
@@ -71,6 +76,25 @@ export function useEquipe(organizationId) {
     }
   }
 
+  // Transferência de ownership (Feature 6.9) — só o owner chama isso (a UI
+  // já esconde a ação de quem não é owner; o backend também garante isso
+  // via garantirPodeTransferirOwnership). O owner atual vira admin, o alvo
+  // vira owner — troca 1:1, nunca dois owners ao mesmo tempo.
+  async function transferirOwnership(novoOwnerUserId) {
+    try {
+      await api.post(`/organizations/${organizationId}/members/transfer-ownership`, {
+        novoOwnerUserId,
+      });
+      showToast("Propriedade da organização transferida.", "sucesso");
+      await Promise.all([carregar(), recarregarOrganizacoes()]);
+      return true;
+    } catch (e) {
+      const mensagem = e.response?.data?.erro || "Não foi possível transferir a propriedade.";
+      showToast(mensagem, "erro");
+      return false;
+    }
+  }
+
   return {
     membros,
     convites,
@@ -80,5 +104,6 @@ export function useEquipe(organizationId) {
     revogarConvite,
     alterarRole,
     removerMembro,
+    transferirOwnership,
   };
 }

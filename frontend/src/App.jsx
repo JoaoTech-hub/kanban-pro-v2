@@ -5,6 +5,7 @@ import { ThemeProvider as StyledThemeProvider } from "styled-components";
 import { AuthProvider } from "./context/AuthContext";
 import { ThemeProvider, useTheme } from "./context/ThemeContext";
 import { ToastProvider } from "./context/ToastContext";
+import { OrganizationsProvider } from "./context/OrganizationsContext";
 import { ProjectProvider } from "./context/ProjectContext";
 
 import GlobalStyle from "./styles/global";
@@ -36,71 +37,73 @@ function ThemedApp() {
       <GlobalStyle />
 
       <ToastProvider>
-        <ProjectProvider>
-          <Suspense fallback={<PageLoader />}>
-            <Routes>
-              <Route path="/" element={<Login />} />
-              <Route path="/registro" element={<Registro />} />
-              <Route path="/esqueci-senha" element={<EsqueciSenha />} />
-              <Route path="/redefinir-senha" element={<RedefinirSenha />} />
-              <Route path="/convites/:token" element={<AceitarConvite />} />
+        <OrganizationsProvider>
+          <ProjectProvider>
+            <Suspense fallback={<PageLoader />}>
+              <Routes>
+                <Route path="/" element={<Login />} />
+                <Route path="/registro" element={<Registro />} />
+                <Route path="/esqueci-senha" element={<EsqueciSenha />} />
+                <Route path="/redefinir-senha" element={<RedefinirSenha />} />
+                <Route path="/convites/:token" element={<AceitarConvite />} />
 
-              <Route
-                path="/equipe"
-                element={
-                  <ProtectedRoute>
-                    <Equipe />
-                  </ProtectedRoute>
-                }
-              />
+                <Route
+                  path="/equipe"
+                  element={
+                    <ProtectedRoute>
+                      <Equipe />
+                    </ProtectedRoute>
+                  }
+                />
 
-              <Route
-                path="/dashboard"
-                element={
-                  <ProtectedRoute>
-                    <Dashboard />
-                  </ProtectedRoute>
-                }
-              />
+                <Route
+                  path="/dashboard"
+                  element={
+                    <ProtectedRoute>
+                      <Dashboard />
+                    </ProtectedRoute>
+                  }
+                />
 
-              <Route
-                path="/projetos"
-                element={
-                  <ProtectedRoute>
-                    <Projetos />
-                  </ProtectedRoute>
-                }
-              />
+                <Route
+                  path="/projetos"
+                  element={
+                    <ProtectedRoute>
+                      <Projetos />
+                    </ProtectedRoute>
+                  }
+                />
 
-              <Route
-                path="/tarefas"
-                element={
-                  <ProtectedRoute>
-                    <Tarefas />
-                  </ProtectedRoute>
-                }
-              />
+                <Route
+                  path="/tarefas"
+                  element={
+                    <ProtectedRoute>
+                      <Tarefas />
+                    </ProtectedRoute>
+                  }
+                />
 
-              <Route
-                path="/perfil"
-                element={
-                  <ProtectedRoute>
-                    <Perfil />
-                  </ProtectedRoute>
-                }
-              />
+                <Route
+                  path="/perfil"
+                  element={
+                    <ProtectedRoute>
+                      <Perfil />
+                    </ProtectedRoute>
+                  }
+                />
 
-              <Route
-                path="/configuracoes"
-                element={
-                  <ProtectedRoute>
-                    <Configuracoes />
-                  </ProtectedRoute>
-                }
-              />
-            </Routes>
-          </Suspense>
-        </ProjectProvider>
+                <Route
+                  path="/configuracoes"
+                  element={
+                    <ProtectedRoute>
+                      <Configuracoes />
+                    </ProtectedRoute>
+                  }
+                />
+              </Routes>
+            </Suspense>
+          </ProjectProvider>
+        </OrganizationsProvider>
       </ToastProvider>
     </StyledThemeProvider>
   );

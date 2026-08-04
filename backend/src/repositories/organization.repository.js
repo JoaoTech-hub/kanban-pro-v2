@@ -13,6 +13,11 @@ function updatePlan(id, plan) {
   return prisma.organization.update({ where: { id }, data: { plan } });
 }
 
+function updateName(id, name) {
+  if (!id) throw new Error("updateName chamado sem um id de organização válido");
+  return prisma.organization.update({ where: { id }, data: { name } });
+}
+
 // Trava a linha da organização até o fim da transação (client precisa ser o
 // `tx` de um prisma.$transaction — travar fora de uma transação não tem
 // efeito nenhum). Usado para serializar operações que dependem de contar
@@ -23,4 +28,4 @@ function lockForUpdate(id, client) {
   return client.$queryRaw`SELECT id FROM organizations WHERE id = ${id} FOR UPDATE`;
 }
 
-module.exports = { create, findById, updatePlan, lockForUpdate };
+module.exports = { create, findById, updatePlan, updateName, lockForUpdate };

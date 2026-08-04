@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import api from "../services/api";
 import { useAuth } from "../context/AuthContext";
+import { useOrganizacoes } from "../hooks/useOrganizacoes";
 import {
   PageWrapper,
   Card,
@@ -20,6 +21,7 @@ export default function AceitarConvite() {
   const { token } = useParams();
   const navigate = useNavigate();
   const { login } = useAuth();
+  const { carregar: carregarOrganizacoes } = useOrganizacoes();
 
   const [convite, setConvite] = useState(null);
   const [carregandoConvite, setCarregandoConvite] = useState(true);
@@ -77,7 +79,16 @@ export default function AceitarConvite() {
     setEnviando(true);
     try {
       const resposta = await api.post(`/convites/${token}/aceitar-novo`, { nome, senha });
-      login(resposta.data.token, resposta.data.nome, resposta.data.organizationId);
+
+      // Ordem importa: login() precisa persistir o token ANTES de
+      // carregarOrganizacoes(), senão essa chamada sairia sem Authorization.
+      // redirecionar:false segura a navegação até a lista estar atualizada
+      // com a organização recém-aceita (evita ir pro dashboard sem ela).
+      login(resposta.data.token, resposta.data.nome, resposta.data.organizationId, {
+        redirecionar: false,
+      });
+      await carregarOrganizacoes();
+      navigate("/dashboard");
     } catch (err) {
       setErroForm(
         err.response?.data?.erro || "Não foi possível aceitar o convite. Tente novamente."

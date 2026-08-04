@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 
 import ProjectSwitcher from "./ProjectSwitcher";
+import OrganizationSwitcher from "./OrganizationSwitcher";
 
 import {
   SidebarContainer,
@@ -57,6 +58,7 @@ export default function Sidebar() {
       <SidebarContainer $aberta={aberta}>
         <Logo>🚀 Kanban Pro</Logo>
 
+        <OrganizationSwitcher />
         <ProjectSwitcher />
 
         <Menu>
