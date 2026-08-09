@@ -107,9 +107,13 @@ const Avatar = styled.div`
 // ── Componente ────────────────────────────────────────────────────────────────
 
 export default function Perfil() {
-  const { nome: nomeCtx } = useAuth();
+  const { nome: nomeCtx, atualizarNome: atualizarNomeCtx } = useAuth();
 
-  const [nome,         setNome]        = useState("");
+  // Nome já existe no AuthContext — inicializa com ele direto, sem esperar
+  // a API, pra evitar o campo aparecer vazio por um instante. O e-mail não
+  // existe em nenhum lugar do frontend hoje, então ele sim precisa mesmo
+  // da chamada a /perfil.
+  const [nome,         setNome]        = useState(nomeCtx || "");
   const [email,        setEmail]       = useState("");
   const [msgNome,      setMsgNome]     = useState(null);
   const [salvandoNome, setSalvandoNome] = useState(false);
@@ -122,9 +126,13 @@ export default function Perfil() {
 
   useEffect(() => {
     api.get("/perfil").then((r) => {
-      setNome(r.data.nome);
+      // Só sobrescreve o nome se realmente vier diferente — evita um
+      // "flash" caso a resposta chegue depois de o usuário já ter
+      // começado a digitar algo novo no campo.
+      setNome((atual) => (atual === nomeCtx ? r.data.nome : atual));
       setEmail(r.data.email);
     });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   async function salvarNome(e) {
@@ -134,6 +142,7 @@ export default function Perfil() {
     setMsgNome(null);
     try {
       await api.patch("/perfil", { nome });
+      atualizarNomeCtx(nome);
       setMsgNome({ texto: "Nome atualizado com sucesso!", erro: false });
     } catch (err) {
       setMsgNome({ texto: err.response?.data?.erro || "Erro ao salvar.", erro: true });

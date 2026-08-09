@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import styled from "styled-components";
 import { FiTrash2, FiEdit2, FiFilter } from "react-icons/fi";
 import PageLayout from "../components/PageLayout";
@@ -7,7 +7,7 @@ import Badge from "../components/UI/Badge";
 import ConfirmModal from "../components/ConfirmModal";
 import { useAuth } from "../context/AuthContext";
 import { useProject } from "../context/ProjectContext";
-import { useKanban } from "../hooks/useKanban";
+import { useKanban } from "../context/KanbanContext";
 import api from "../services/api";
 import { formatarData, estaAtrasado } from "../utils/formatters";
 
@@ -138,7 +138,7 @@ export default function Tarefas() {
   const { organizationId } = useAuth();
   const { projectId, carregando: carregandoProjeto, erro: erroProjeto } = useProject();
 
-  const { cards, colunas, carregar, setCards } = useKanban(organizationId, projectId);
+  const { cards, colunas, setCards, carregouAoMenosUmaVez } = useKanban();
 
   const [busca, setBusca] = useState("");
   const [filtroPrioridade, setFiltroPrioridade] = useState("");
@@ -148,10 +148,6 @@ export default function Tarefas() {
   const [cardExcluir, setCardExcluir] = useState(null);
 
   const base = `/organizations/${organizationId}/projects/${projectId}`;
-
-  useEffect(() => {
-    if (projectId) carregar();
-  }, [carregar, projectId]);
 
   function abrirExcluir(card) {
     setCardExcluir(card);
@@ -188,14 +184,6 @@ export default function Tarefas() {
     return matchBusca && matchPrioridade && matchColuna;
   });
 
-  if (carregandoProjeto) {
-    return (
-      <PageLayout titulo="Tarefas">
-        <p>Carregando...</p>
-      </PageLayout>
-    );
-  }
-
   if (erroProjeto) {
     return (
       <PageLayout titulo="Tarefas">
@@ -206,79 +194,89 @@ export default function Tarefas() {
     );
   }
 
+  // Mesmo raciocínio de Dashboard.jsx/Projetos.jsx.
+  const semDadoAinda =
+    carregandoProjeto || (!carregouAoMenosUmaVez && cards.length === 0 && colunas.length === 0);
+
   return (
     <PageLayout titulo="Tarefas" subtitulo="Visualize e gerencie todas as suas tarefas">
-      <Toolbar>
-        <FiFilter size={16} style={{ opacity: 0.5 }} />
-        <BuscaInput
-          placeholder="Buscar tarefa..."
-          value={busca}
-          onChange={(e) => setBusca(e.target.value)}
-        />
+      {semDadoAinda ? (
+        <p>Carregando...</p>
+      ) : (
+        <>
+          <Toolbar>
+            <FiFilter size={16} style={{ opacity: 0.5 }} />
+            <BuscaInput
+              placeholder="Buscar tarefa..."
+              value={busca}
+              onChange={(e) => setBusca(e.target.value)}
+            />
 
-        <Filtro value={filtroPrioridade} onChange={(e) => setFiltroPrioridade(e.target.value)}>
-          <option value="">Todas as prioridades</option>
-          <option value="alta">Alta</option>
-          <option value="media">Média</option>
-          <option value="baixa">Baixa</option>
-        </Filtro>
+            <Filtro value={filtroPrioridade} onChange={(e) => setFiltroPrioridade(e.target.value)}>
+              <option value="">Todas as prioridades</option>
+              <option value="alta">Alta</option>
+              <option value="media">Média</option>
+              <option value="baixa">Baixa</option>
+            </Filtro>
 
-        <Filtro value={filtroColuna} onChange={(e) => setFiltroColuna(e.target.value)}>
-          <option value="">Todas as colunas</option>
-          {colunas.map((c) => (
-            <option key={c.id} value={c.id}>{c.titulo}</option>
-          ))}
-        </Filtro>
+            <Filtro value={filtroColuna} onChange={(e) => setFiltroColuna(e.target.value)}>
+              <option value="">Todas as colunas</option>
+              {colunas.map((c) => (
+                <option key={c.id} value={c.id}>{c.titulo}</option>
+              ))}
+            </Filtro>
 
-        <Contagem>{filtrados.length} tarefa{filtrados.length !== 1 ? "s" : ""}</Contagem>
-      </Toolbar>
+            <Contagem>{filtrados.length} tarefa{filtrados.length !== 1 ? "s" : ""}</Contagem>
+          </Toolbar>
 
-      <Tabela>
-        <Linha>
-          <span>Título</span>
-          <span>Prioridade</span>
-          <span>Prazo</span>
-          <span>Coluna</span>
-          <span>Ações</span>
-        </Linha>
+          <Tabela>
+            <Linha>
+              <span>Título</span>
+              <span>Prioridade</span>
+              <span>Prazo</span>
+              <span>Coluna</span>
+              <span>Ações</span>
+            </Linha>
 
-        {filtrados.length === 0 && (
-          <Vazio>Nenhuma tarefa encontrada.</Vazio>
-        )}
+            {filtrados.length === 0 && (
+              <Vazio>Nenhuma tarefa encontrada.</Vazio>
+            )}
 
-        {filtrados.map((card) => (
-          <Linha key={card.id}>
-            <Titulo>{card.titulo}</Titulo>
+            {filtrados.map((card) => (
+              <Linha key={card.id}>
+                <Titulo>{card.titulo}</Titulo>
 
-            <Badge prioridade={card.prioridade} />
+                <Badge prioridade={card.prioridade} />
 
-            <Prazo $atrasado={estaAtrasado(card.prazo)}>
-              {card.prazo ? formatarData(card.prazo) : "—"}
-            </Prazo>
+                <Prazo $atrasado={estaAtrasado(card.prazo)}>
+                  {card.prazo ? formatarData(card.prazo) : "—"}
+                </Prazo>
 
-            <Coluna>{nomeDaColuna(card.coluna_id)}</Coluna>
+                <Coluna>{nomeDaColuna(card.coluna_id)}</Coluna>
 
-            <AcoesLinha>
-              <IconeBtn
-                onClick={() => setCardEditando(card)}
-                title="Editar"
-                aria-label={`Editar tarefa ${card.titulo}`}
-              >
-                <FiEdit2 size={15} />
-              </IconeBtn>
+                <AcoesLinha>
+                  <IconeBtn
+                    onClick={() => setCardEditando(card)}
+                    title="Editar"
+                    aria-label={`Editar tarefa ${card.titulo}`}
+                  >
+                    <FiEdit2 size={15} />
+                  </IconeBtn>
 
-              <IconeBtn
-                $danger
-                onClick={() => abrirExcluir(card)}
-                title="Excluir"
-                aria-label={`Excluir tarefa ${card.titulo}`}
-              >
-                <FiTrash2 size={15} />
-              </IconeBtn>
-            </AcoesLinha>
-          </Linha>
-        ))}
-      </Tabela>
+                  <IconeBtn
+                    $danger
+                    onClick={() => abrirExcluir(card)}
+                    title="Excluir"
+                    aria-label={`Excluir tarefa ${card.titulo}`}
+                  >
+                    <FiTrash2 size={15} />
+                  </IconeBtn>
+                </AcoesLinha>
+              </Linha>
+            ))}
+          </Tabela>
+        </>
+      )}
 
       {cardEditando && (
         <CardFormModal

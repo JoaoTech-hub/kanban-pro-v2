@@ -9,7 +9,19 @@ const NOME_PROJETO_PADRAO = "Meu Quadro";
 // ProjectContext) é responsável pelo useEffect que dispara `carregar`.
 export function useProjetos(organizationId, aoOrganizacaoInvalida) {
   const [projetos, setProjetos] = useState([]);
-  const [projectId, setProjectId] = useState(null);
+  // Inicializa com o último projeto ativo salvo (se existir) em vez de
+  // `null` — é o mesmo valor que `carregar()` mais tarde confirma/corrige
+  // contra a lista real, só que disponível *sincronamente*, sem esperar a
+  // rede. Isso permite que o KanbanContext (que depende de `projectId`)
+  // comece a buscar colunas/cards em PARALELO com esta própria busca da
+  // lista de projetos, em vez de só poder começar depois que ela terminar
+  // — colapsando uma cadeia sequencial de 2 requisições em 2 requisições
+  // paralelas pra quem já tem um projeto salvo de uma visita anterior.
+  // Se o valor salvo não existir mais na lista real, `carregar()` já
+  // corrige isso normalmente (mesma lógica de sempre).
+  const [projectId, setProjectId] = useState(() =>
+    organizationId ? localStorage.getItem(`projetoAtivo:${organizationId}`) : null
+  );
   const [carregando, setCarregando] = useState(true);
   const [erro, setErro] = useState(null);
   const { showToast } = useToast();

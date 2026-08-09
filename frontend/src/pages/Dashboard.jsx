@@ -1,10 +1,9 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { DragDropContext } from "@hello-pangea/dnd";
 
 import { useAuth } from "../context/AuthContext";
 import { useProject } from "../context/ProjectContext";
-import { useKanban, normalizarCard } from "../hooks/useKanban";
-import { useColunas } from "../hooks/useColunas";
+import { useKanban, normalizarCard } from "../context/KanbanContext";
 
 import PageLayout from "../components/PageLayout";
 import Header from "../components/Header";
@@ -19,25 +18,26 @@ export default function Dashboard() {
   const { organizationId } = useAuth();
   const { projectId, carregando: carregandoProjeto, erro: erroProjeto } = useProject();
 
-  const { cards, colunas, erro, carregar, moverCard, setCards, setColunas } = useKanban(
-    organizationId,
-    projectId
-  );
-
-  const { criarColuna, renomearColuna, excluirColuna, salvando } = useColunas(
-    organizationId,
-    projectId,
-    { colunas, setColunas, setCards, carregar }
-  );
+  // Vem do KanbanContext (persistente, montado uma vez acima do <Routes>)
+  // — não busca nada aqui. O Provider já cuida do fetch, chaveado em
+  // organizationId+projectId, e mantém o estado entre navegações.
+  const {
+    cards,
+    colunas,
+    erro,
+    moverCard,
+    setCards,
+    criarColuna,
+    renomearColuna,
+    excluirColuna,
+    salvando,
+    carregouAoMenosUmaVez,
+  } = useKanban();
 
   const [cardSelecionado, setCardSelecionado] = useState(null);
   const [modalAberto, setModalAberto] = useState(false);
   const [pesquisa, setPesquisa] = useState("");
   const [cardAnimandoId, setCardAnimandoId] = useState(null);
-
-  useEffect(() => {
-    if (projectId) carregar();
-  }, [carregar, projectId]);
 
   async function onDragEnd(resultado) {
     if (!resultado.destination) return;
@@ -108,14 +108,6 @@ export default function Dashboard() {
     return mapa;
   }, [cards, pesquisa]);
 
-  if (carregandoProjeto) {
-    return (
-      <PageLayout>
-        <p>Carregando seu quadro...</p>
-      </PageLayout>
-    );
-  }
-
   if (erroProjeto) {
     return (
       <PageLayout>
@@ -125,6 +117,18 @@ export default function Dashboard() {
       </PageLayout>
     );
   }
+
+  // Só true quando realmente não existe dado ainda nesta sessão (primeira
+  // visita, ou o project acabou de trocar). Em revisitas (Dashboard <-> outra
+  // página <-> Dashboard), tanto carregandoProjeto quanto carregouAoMenosUmaVez
+  // já estão corretos ANTES deste componente montar de novo — mas antes,
+  // isso ficava em um `return` separado (uma árvore JSX inteiramente
+  // diferente da árvore de conteúdo real). Trocar de árvore força o React a
+  // desmontar uma e montar outra, o que causava um flash de "Carregando..."
+  // por um ciclo de render mesmo com o dado já pronto. Mantendo tudo numa
+  // única árvore (mesmo padrão de Equipe.jsx), não existe essa troca — só
+  // o conteúdo interno da área do quadro muda.
+  const semDadoAinda = carregandoProjeto || (!carregouAoMenosUmaVez && colunas.length === 0);
 
   return (
     <PageLayout>
@@ -138,32 +142,36 @@ export default function Dashboard() {
         </p>
       )}
 
-      <DragDropContext
-        onDragEnd={onDragEnd}
-        autoScrollerOptions={{
-          startFromPercentage: 0.15,
-          maxScrollAtPercentage: 0.05,
-          maxPixelScroll: 28,
-          durationDampening: { stopDampeningAt: 1200, accelerateAt: 360 },
-        }}
-      >
-        <ColumnsContainer>
-          {colunas.map((coluna) => (
-            <Column
-              key={coluna.id}
-              coluna={coluna}
-              cards={cardsPorColuna[coluna.id] ?? []}
-              onEditar={abrirEdicao}
-              onRenomear={renomearColuna}
-              onExcluir={excluirColuna}
-              cardAnimandoId={cardAnimandoId}
-              onAnimacaoFim={limparAnimacao}
-            />
-          ))}
+      {semDadoAinda ? (
+        <p>Carregando seu quadro...</p>
+      ) : (
+        <DragDropContext
+          onDragEnd={onDragEnd}
+          autoScrollerOptions={{
+            startFromPercentage: 0.15,
+            maxScrollAtPercentage: 0.05,
+            maxPixelScroll: 28,
+            durationDampening: { stopDampeningAt: 1200, accelerateAt: 360 },
+          }}
+        >
+          <ColumnsContainer>
+            {colunas.map((coluna) => (
+              <Column
+                key={coluna.id}
+                coluna={coluna}
+                cards={cardsPorColuna[coluna.id] ?? []}
+                onEditar={abrirEdicao}
+                onRenomear={renomearColuna}
+                onExcluir={excluirColuna}
+                cardAnimandoId={cardAnimandoId}
+                onAnimacaoFim={limparAnimacao}
+              />
+            ))}
 
-          <NovaColuna onCriar={criarColuna} salvando={salvando} />
-        </ColumnsContainer>
-      </DragDropContext>
+            <NovaColuna onCriar={criarColuna} salvando={salvando} />
+          </ColumnsContainer>
+        </DragDropContext>
+      )}
 
       {modalAberto && (
         <CardFormModal

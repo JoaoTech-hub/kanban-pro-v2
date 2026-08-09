@@ -1,12 +1,10 @@
-import { useEffect, useState, useMemo } from "react";
+import { useState, useMemo } from "react";
 import styled from "styled-components";
 import { FiTrash2, FiPlus, FiLayers, FiFolder } from "react-icons/fi";
 import PageLayout from "../components/PageLayout";
 import ConfirmModal from "../components/ConfirmModal";
-import { useAuth } from "../context/AuthContext";
 import { useProject } from "../context/ProjectContext";
-import { useKanban } from "../hooks/useKanban";
-import { useColunas } from "../hooks/useColunas";
+import { useKanban } from "../context/KanbanContext";
 
 // ── Styled components (inalterado) ──────────────────────────────────────────
 
@@ -184,25 +182,15 @@ const EstadoVazio = styled.div`
 // ── Componente ────────────────────────────────────────────────────────────────
 
 export default function Projetos() {
-  const { organizationId } = useAuth();
-  const { projectId, carregando: carregandoProjeto, erro: erroProjeto } = useProject();
+  const { carregando: carregandoProjeto, erro: erroProjeto } = useProject();
 
-  const { cards, colunas, carregar, setCards, setColunas } = useKanban(organizationId, projectId);
-  const { criarColuna, excluirColuna, salvando } = useColunas(organizationId, projectId, {
-    colunas,
-    setColunas,
-    setCards,
-    carregar,
-  });
+  const { cards, colunas, criarColuna, excluirColuna, salvando, carregouAoMenosUmaVez } =
+    useKanban();
 
   const [criando, setCriando] = useState(false);
   const [novoNome, setNovoNome] = useState("");
   const [modalExcluir, setModalExcluir] = useState(false);
   const [projetoExcluir, setProjetoExcluir] = useState(null);
-
-  useEffect(() => {
-    if (projectId) carregar();
-  }, [carregar, projectId]);
 
   const cardsPorColuna = useMemo(() => {
     const mapa = {};
@@ -246,14 +234,6 @@ export default function Projetos() {
     }
   }
 
-  if (carregandoProjeto) {
-    return (
-      <PageLayout titulo="Colunas">
-        <p>Carregando...</p>
-      </PageLayout>
-    );
-  }
-
   if (erroProjeto) {
     return (
       <PageLayout titulo="Colunas">
@@ -264,76 +244,86 @@ export default function Projetos() {
     );
   }
 
+  // Mesmo raciocínio de Dashboard.jsx: só true na primeira visita de
+  // verdade (sem dado ainda). Em revisitas o dado já está em memória, e
+  // renderizar dentro da MESMA árvore (em vez de um `return` separado)
+  // evita o flash de "Carregando..." que a troca de árvore causava.
+  const semDadoAinda = carregandoProjeto || (!carregouAoMenosUmaVez && colunas.length === 0);
+
   return (
     <PageLayout titulo="Colunas" subtitulo="Organize as colunas do quadro atual">
-      <Grid>
-        {colunas.length === 0 && !criando && (
-          <EstadoVazio>
-            <FiFolder size={28} />
-            Você ainda não tem colunas. Crie a primeira para começar.
-          </EstadoVazio>
-        )}
+      {semDadoAinda ? (
+        <p>Carregando...</p>
+      ) : (
+        <Grid>
+          {colunas.length === 0 && !criando && (
+            <EstadoVazio>
+              <FiFolder size={28} />
+              Você ainda não tem colunas. Crie a primeira para começar.
+            </EstadoVazio>
+          )}
 
-        {colunas.map((coluna) => {
-          const { total, pct } = calcularProgresso(coluna);
-          return (
-            <ProjetoCard key={coluna.id}>
-              <ProjetoHeader>
-                <ProjetoTitulo>{coluna.titulo}</ProjetoTitulo>
-                <IconeBtn
-                  onClick={() => abrirExclusao(coluna, total)}
-                  title="Excluir coluna"
-                  aria-label={`Excluir coluna ${coluna.titulo}`}
-                >
-                  <FiTrash2 size={16} />
-                </IconeBtn>
-              </ProjetoHeader>
+          {colunas.map((coluna) => {
+            const { total, pct } = calcularProgresso(coluna);
+            return (
+              <ProjetoCard key={coluna.id}>
+                <ProjetoHeader>
+                  <ProjetoTitulo>{coluna.titulo}</ProjetoTitulo>
+                  <IconeBtn
+                    onClick={() => abrirExclusao(coluna, total)}
+                    title="Excluir coluna"
+                    aria-label={`Excluir coluna ${coluna.titulo}`}
+                  >
+                    <FiTrash2 size={16} />
+                  </IconeBtn>
+                </ProjetoHeader>
 
-              <Stat>
-                <FiLayers size={14} />
-                {total} tarefa{total !== 1 ? "s" : ""}
-              </Stat>
+                <Stat>
+                  <FiLayers size={14} />
+                  {total} tarefa{total !== 1 ? "s" : ""}
+                </Stat>
 
-              <div>
-                <ProgressoHeader>
-                  <PctLabel>Progresso</PctLabel>
-                  <PctLabel>{pct}%</PctLabel>
-                </ProgressoHeader>
-                <BarraFundo>
-                  <BarraProgresso $pct={pct} />
-                </BarraFundo>
-              </div>
+                <div>
+                  <ProgressoHeader>
+                    <PctLabel>Progresso</PctLabel>
+                    <PctLabel>{pct}%</PctLabel>
+                  </ProgressoHeader>
+                  <BarraFundo>
+                    <BarraProgresso $pct={pct} />
+                  </BarraFundo>
+                </div>
+              </ProjetoCard>
+            );
+          })}
+
+          {criando ? (
+            <ProjetoCard>
+              <ProjetoTitulo>Nova coluna</ProjetoTitulo>
+              <InputNome
+                autoFocus
+                placeholder="Nome da coluna"
+                value={novoNome}
+                onChange={(e) => setNovoNome(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") criarProjeto();
+                  if (e.key === "Escape") setCriando(false);
+                }}
+              />
+              <Acoes>
+                <BtnConfirmar onClick={criarProjeto} disabled={salvando || !novoNome.trim()}>
+                  Criar
+                </BtnConfirmar>
+                <BtnCancelar onClick={() => setCriando(false)}>Cancelar</BtnCancelar>
+              </Acoes>
             </ProjetoCard>
-          );
-        })}
-
-        {criando ? (
-          <ProjetoCard>
-            <ProjetoTitulo>Nova coluna</ProjetoTitulo>
-            <InputNome
-              autoFocus
-              placeholder="Nome da coluna"
-              value={novoNome}
-              onChange={(e) => setNovoNome(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") criarProjeto();
-                if (e.key === "Escape") setCriando(false);
-              }}
-            />
-            <Acoes>
-              <BtnConfirmar onClick={criarProjeto} disabled={salvando || !novoNome.trim()}>
-                Criar
-              </BtnConfirmar>
-              <BtnCancelar onClick={() => setCriando(false)}>Cancelar</BtnCancelar>
-            </Acoes>
-          </ProjetoCard>
-        ) : (
-          <AddCard onClick={() => setCriando(true)}>
-            <FiPlus size={18} />
-            Nova coluna
-          </AddCard>
-        )}
-      </Grid>
+          ) : (
+            <AddCard onClick={() => setCriando(true)}>
+              <FiPlus size={18} />
+              Nova coluna
+            </AddCard>
+          )}
+        </Grid>
+      )}
 
       <ConfirmModal
         aberto={modalExcluir}

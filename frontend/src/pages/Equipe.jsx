@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import styled from "styled-components";
 import { FiUserPlus, FiTrash2, FiMail, FiClock } from "react-icons/fi";
 
@@ -10,7 +10,7 @@ import ConfirmModal from "../components/ConfirmModal";
 
 import { useAuth } from "../context/AuthContext";
 import { useOrganizacoes } from "../hooks/useOrganizacoes";
-import { useEquipe } from "../hooks/useEquipe";
+import { useEquipe } from "../context/TeamContext";
 
 const Secao = styled.div`
   background: ${({ theme }) => theme.card};
@@ -138,14 +138,13 @@ export default function Equipe() {
   const {
     membros,
     convites,
-    carregando,
-    carregar,
     convidar,
     revogarConvite,
     alterarRole,
     removerMembro,
     transferirOwnership,
-  } = useEquipe(organizationId);
+    carregouAoMenosUmaVez,
+  } = useEquipe();
 
   const [email, setEmail] = useState("");
   const [roleConvite, setRoleConvite] = useState("member");
@@ -162,10 +161,6 @@ export default function Equipe() {
   // uma prop muda"), evitando o anti-padrão de chamar setState dentro de um
   // useEffect só pra sincronizar.
   const [nomeOrganizacaoAnterior, setNomeOrganizacaoAnterior] = useState(undefined);
-
-  useEffect(() => {
-    carregar();
-  }, [carregar]);
 
   const minhaOrganizacao = organizacoes.find((o) => o.id === organizationId);
 
@@ -316,7 +311,7 @@ export default function Equipe() {
 
       <Secao>
         <SecaoTitulo>Membros ({membros.length})</SecaoTitulo>
-        {!carregando && membros.length === 0 && <VazioMsg>Nenhum membro ainda.</VazioMsg>}
+        {carregouAoMenosUmaVez && membros.length === 0 && <VazioMsg>Nenhum membro ainda.</VazioMsg>}
         {membros.map((m) => (
           <Linha key={m.userId}>
             <Info>
@@ -352,7 +347,7 @@ export default function Equipe() {
       {souGerencial && (
         <Secao>
           <SecaoTitulo>Convites pendentes ({convites.length})</SecaoTitulo>
-          {!carregando && convites.length === 0 && (
+          {carregouAoMenosUmaVez && convites.length === 0 && (
             <VazioMsg>Nenhum convite pendente.</VazioMsg>
           )}
           {convites.map((c) => (
