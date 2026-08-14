@@ -105,6 +105,12 @@ export default function Dashboard() {
     for (const card of filtrados) {
       (mapa[card.coluna_id] ??= []).push(card);
     }
+    // Fonte de verdade da posição é o campo `ordem` (ver auditoria) — a
+    // ordem de inserção no array `cards` não reflete necessariamente a
+    // ordem real, principalmente depois de um drag-and-drop.
+    for (const colunaId in mapa) {
+      mapa[colunaId].sort((a, b) => a.ordem - b.ordem);
+    }
     return mapa;
   }, [cards, pesquisa]);
 

@@ -204,14 +204,14 @@ export default function Configuracoes() {
           <OpcaoLinha>
             <OpcaoInfo>
               <OpcaoTitulo>Stack</OpcaoTitulo>
-              <OpcaoDesc>React 19 + Vite + Node.js + SQLite</OpcaoDesc>
+              <OpcaoDesc>React + Vite + Node.js + Express + Prisma</OpcaoDesc>
             </OpcaoInfo>
           </OpcaoLinha>
 
           <OpcaoLinha>
             <OpcaoInfo>
               <OpcaoTitulo>Armazenamento</OpcaoTitulo>
-              <OpcaoDesc>SQLite local (kanban.db)</OpcaoDesc>
+              <OpcaoDesc>PostgreSQL</OpcaoDesc>
             </OpcaoInfo>
           </OpcaoLinha>
 
