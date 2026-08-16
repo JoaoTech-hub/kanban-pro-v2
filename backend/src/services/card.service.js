@@ -13,22 +13,25 @@ async function criar({ organizationId, projectId, titulo, descricao, prioridade,
   await colunaService.validarPertencimento(colunaId, organizationId, projectId);
 
   // Executa o cálculo da ordem e a criação em transação com lock na coluna
-  return prisma.$transaction(async (tx) => {
-    const ordem = await cardRepository.proximaOrdem(organizationId, colunaId, tx);
+  return prisma.$transaction(
+    async (tx) => {
+      const ordem = await cardRepository.proximaOrdem(organizationId, colunaId, tx);
 
-    return cardRepository.create(
-      {
-        organizationId,
-        colunaId,
-        titulo,
-        descricao,
-        prioridade,
-        prazo,
-        ordem,
-      },
-      tx
-    );
-  });
+      return cardRepository.create(
+        {
+          organizationId,
+          colunaId,
+          titulo,
+          descricao,
+          prioridade,
+          prazo,
+          ordem,
+        },
+        tx
+      );
+    },
+    { maxWait: 10000 }
+  );
 }
 
 async function atualizar({ id, organizationId, projectId, titulo, descricao, prioridade, prazo, colunaId, organizationRole }) {
@@ -121,7 +124,7 @@ async function mover({ id, organizationId, projectId, colunaId, ordem }) {
         await aplicarNovaOrdem(tx, [...cardsDestino, card], idsDestino, colunaDestinoId);
       }
     },
-    { timeout: 15000 }
+    { timeout: 15000, maxWait: 10000 }
   );
 }
 

@@ -4,28 +4,31 @@ const colunaRepository = require("../repositories/coluna.repository");
 const organizationRepository = require("../repositories/organization.repository");
 const { NotFoundError, PlanLimitError, ConflictError } = require("../shared/errors/AppError");
 const { garantirPapelGerencial } = require("../shared/authorization");
-
-const LIMITE_PROJETOS_FREE = 1;
+const { limiteProjetos } = require("../shared/planLimits");
 
 async function criar({ organization, organizationRole, name, type }) {
   garantirPapelGerencial(organizationRole);
 
   return prisma.$transaction(
     async (tx) => {
-      if (organization.plan === "free") {
+      const limite = limiteProjetos(organization.plan);
+
+      // Plano sem teto (hoje, o Pro): pula lock/contagem inteiramente — não
+      // existe invariante nenhuma pra proteger aqui.
+      if (Number.isFinite(limite)) {
         // Trava a linha da organização ANTES de contar. Se duas requisições
         // de criação chegarem quase juntas, a segunda fica bloqueada aqui
         // até a primeira terminar (commit ou rollback) — só depois ela
         // repete a contagem, já enxergando o projeto recém-criado. Isso
         // fecha a mesma janela de corrida (checar-depois-agir em dois
         // passos separados) que já tínhamos corrigido no token de reset de
-        // senha, só que agora aplicada ao limite do plano gratuito.
+        // senha, só que agora aplicada ao limite do plano.
         await organizationRepository.lockForUpdate(organization.id, tx);
 
         const total = await projectRepository.countByOrganization(organization.id, tx);
-        if (total >= LIMITE_PROJETOS_FREE) {
+        if (total >= limite) {
           throw new PlanLimitError(
-            "Plano gratuito permite apenas 1 projeto. Faça upgrade para o plano Pro para criar mais."
+            `Você atingiu o limite de ${limite} projetos do plano atual. Faça upgrade para o plano Pro para criar mais.`
           );
         }
       }
@@ -44,8 +47,10 @@ async function criar({ organization, organizationRole, name, type }) {
     // (5000ms) pode não ser suficiente com um Postgres serverless (Neon),
     // que às vezes precisa "acordar" a instância antes da primeira query.
     // Também dá margem para o tempo de espera pela trava de linha em caso
-    // de concorrência real.
-    { timeout: 15000 }
+    // de concorrência real. maxWait (tempo pra conseguir um slot e começar
+    // a transação — default 2000ms se omitido) sofre do mesmo problema, e
+    // foi a causa raiz confirmada de um P2028 real em teste.
+    { timeout: 15000, maxWait: 10000 }
   );
 }
 
@@ -94,10 +99,10 @@ async function remover(id, organizationId, organizationRole) {
 
       const total = await projectRepository.countByOrganization(organizationId, tx);
       if (total <= 1) {
-        // Regra única para qualquer plano: nunca se pode ficar sem nenhum
-        // quadro. No plano Free isso, na prática, significa "nunca pode
-        // excluir" (Free nunca tem mais de 1 quadro pra começar); no Pro,
-        // significa "pode excluir, desde que sobre pelo menos outro".
+        // Regra única para qualquer plano, independente do teto de criação
+        // (limiteProjetos): nunca se pode ficar sem nenhum quadro. Isso só
+        // impede excluir quando resta exatamente 1 — em qualquer plano que
+        // já tenha mais de 1 quadro, a exclusão é permitida normalmente.
         throw new ConflictError("Não é possível excluir o último quadro da organização.");
       }
 
@@ -108,7 +113,7 @@ async function remover(id, organizationId, organizationRole) {
       );
       if (resultado.count === 0) throw new NotFoundError("Projeto não encontrado");
     },
-    { timeout: 15000 }
+    { timeout: 15000, maxWait: 10000 }
   );
 }
 

@@ -17,14 +17,9 @@ const {
   PlanLimitError,
 } = require("../shared/errors/AppError");
 const { SEGREDO } = require("../middlewares/auth");
+const { limiteMembros } = require("../shared/planLimits");
 
 const INVITE_TOKEN_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 dias
-
-// Mesmo espírito do LIMITE_PROJETOS_FREE em project.service.js: um teto
-// simples pro plano gratuito até existir cobrança de verdade (Fase 5,
-// item A-03, ainda em aberto). Ajustável sem tocar em mais nada — é só
-// esta constante.
-const LIMITE_MEMBROS_FREE = 3;
 
 async function criar({ organization, organizationRole, invitedById, email, role }) {
   garantirPodeAtribuirRole(organizationRole, role);
@@ -38,16 +33,18 @@ async function criar({ organization, organizationRole, invitedById, email, role 
 
   return prisma.$transaction(
     async (tx) => {
-      if (organization.plan === "free") {
+      const limite = limiteMembros(organization.plan);
+
+      if (Number.isFinite(limite)) {
         // Mesmo padrão de lockForUpdate já usado no limite de projetos:
         // trava a organização antes de contar, pra duas criações de
         // convite concorrentes não lerem a mesma contagem desatualizada.
         await organizationRepository.lockForUpdate(organization.id, tx);
 
         const total = await memberRepository.countByOrganization(organization.id, tx);
-        if (total >= LIMITE_MEMBROS_FREE) {
+        if (total >= limite) {
           throw new PlanLimitError(
-            `Plano gratuito permite no máximo ${LIMITE_MEMBROS_FREE} membros. Faça upgrade para o plano Pro para convidar mais pessoas.`
+            `Você atingiu o limite de ${limite} membros do plano atual. Faça upgrade para o plano Pro para convidar mais pessoas.`
           );
         }
       }
@@ -65,7 +62,7 @@ async function criar({ organization, organizationRole, invitedById, email, role 
 
       return { invite, tokenBruto };
     },
-    { timeout: 15000 }
+    { timeout: 15000, maxWait: 10000 }
   );
 }
 
@@ -130,6 +127,27 @@ async function aceitarContaNova(tokenBruto, { nome, senha }) {
 
   const { user } = await prisma.$transaction(
     async (tx) => {
+      const limite = limiteMembros(invite.organization.plan);
+
+      if (Number.isFinite(limite)) {
+        // Mesmo padrão de lock usado em `criar()` — mas agora do lado de
+        // quem ACEITA, não de quem convida. `criar()` sozinho não impede
+        // que uma organização ultrapasse o limite do plano: nada contava
+        // convites pendentes, só membros atuais, então era possível
+        // enviar convites além do limite e o problema só aparecer (ou
+        // não) na hora de vários serem aceitos ao mesmo tempo. Travar a
+        // organização aqui fecha a mesma invariante no ponto em que ela
+        // realmente é violada — quando o membro é de fato adicionado.
+        await organizationRepository.lockForUpdate(invite.organizationId, tx);
+
+        const total = await memberRepository.countByOrganization(invite.organizationId, tx);
+        if (total >= limite) {
+          throw new PlanLimitError(
+            `Esta organização já atingiu o limite de ${limite} membros do plano atual. Peça para um administrador fazer upgrade para o plano Pro antes de aceitar este convite.`
+          );
+        }
+      }
+
       // Reivindica o convite ANTES de criar a conta — mesmo padrão atômico
       // do reset de senha, fecha a janela de corrida de duplo aceite simultâneo.
       const reivindicado = await inviteRepository.markAsAcceptedIfValid(invite.id, tx);
@@ -146,7 +164,7 @@ async function aceitarContaNova(tokenBruto, { nome, senha }) {
 
       return { user };
     },
-    { timeout: 15000 }
+    { timeout: 15000, maxWait: 10000 }
   );
 
   const token = jwt.sign(
@@ -175,15 +193,32 @@ async function aceitarContaExistente(tokenBruto, usuarioId) {
   const jaMembro = await memberRepository.findByUserAndOrg(usuarioId, invite.organizationId);
   if (jaMembro) throw new ConflictError("Você já pertence a esta organização");
 
-  await prisma.$transaction(async (tx) => {
-    const reivindicado = await inviteRepository.markAsAcceptedIfValid(invite.id, tx);
-    if (!reivindicado) throw new UnauthorizedError("Convite inválido, expirado ou já utilizado");
+  await prisma.$transaction(
+    async (tx) => {
+      const limite = limiteMembros(invite.organization.plan);
 
-    await memberRepository.create(
-      { organizationId: invite.organizationId, userId: usuarioId, role: invite.role },
-      tx
-    );
-  });
+      if (Number.isFinite(limite)) {
+        // Mesma checagem e mesmo motivo de aceitarContaNova — ver comentário lá.
+        await organizationRepository.lockForUpdate(invite.organizationId, tx);
+
+        const total = await memberRepository.countByOrganization(invite.organizationId, tx);
+        if (total >= limite) {
+          throw new PlanLimitError(
+            `Esta organização já atingiu o limite de ${limite} membros do plano atual. Peça para um administrador fazer upgrade para o plano Pro antes de aceitar este convite.`
+          );
+        }
+      }
+
+      const reivindicado = await inviteRepository.markAsAcceptedIfValid(invite.id, tx);
+      if (!reivindicado) throw new UnauthorizedError("Convite inválido, expirado ou já utilizado");
+
+      await memberRepository.create(
+        { organizationId: invite.organizationId, userId: usuarioId, role: invite.role },
+        tx
+      );
+    },
+    { maxWait: 10000 }
+  );
 
   return { organizationId: invite.organizationId };
 }

@@ -95,39 +95,42 @@ async function transferirOwnership(organizationId, organizationRole, usuarioIdAt
   const alvo = await memberRepository.findByUserAndOrg(novoOwnerUserId, organizationId);
   if (!alvo) throw new NotFoundError("Este usuário não é membro desta organização");
 
-  await prisma.$transaction(async (tx) => {
-    // As duas escritas são condicionais (updateRoleSeAtual, não updateRole):
-    // só efetivam se a role de cada lado ainda for exatamente a esperada no
-    // momento da escrita. Fecha o cenário de o alvo ter saído da organização
-    // (ou tido a role alterada por outra ação) entre a checagem acima e esta
-    // transação — em vez de completar parcialmente e deixar a organização
-    // sem owner, a operação inteira falha com um erro claro.
-    const alvoAtualizado = await memberRepository.updateRoleSeAtual(
-      organizationId,
-      novoOwnerUserId,
-      alvo.role,
-      "owner",
-      tx
-    );
-    if (!alvoAtualizado) {
-      throw new ConflictError(
-        "O papel deste membro mudou nos últimos instantes — tente novamente."
+  await prisma.$transaction(
+    async (tx) => {
+      // As duas escritas são condicionais (updateRoleSeAtual, não updateRole):
+      // só efetivam se a role de cada lado ainda for exatamente a esperada no
+      // momento da escrita. Fecha o cenário de o alvo ter saído da organização
+      // (ou tido a role alterada por outra ação) entre a checagem acima e esta
+      // transação — em vez de completar parcialmente e deixar a organização
+      // sem owner, a operação inteira falha com um erro claro.
+      const alvoAtualizado = await memberRepository.updateRoleSeAtual(
+        organizationId,
+        novoOwnerUserId,
+        alvo.role,
+        "owner",
+        tx
       );
-    }
+      if (!alvoAtualizado) {
+        throw new ConflictError(
+          "O papel deste membro mudou nos últimos instantes — tente novamente."
+        );
+      }
 
-    const ownerAtualizado = await memberRepository.updateRoleSeAtual(
-      organizationId,
-      usuarioIdAtual,
-      "owner",
-      "admin",
-      tx
-    );
-    if (!ownerAtualizado) {
-      throw new ConflictError(
-        "Você não é mais o owner desta organização — a página será atualizada."
+      const ownerAtualizado = await memberRepository.updateRoleSeAtual(
+        organizationId,
+        usuarioIdAtual,
+        "owner",
+        "admin",
+        tx
       );
-    }
-  });
+      if (!ownerAtualizado) {
+        throw new ConflictError(
+          "Você não é mais o owner desta organização — a página será atualizada."
+        );
+      }
+    },
+    { maxWait: 10000 }
+  );
 }
 
 // Renomear a organização — só o owner. Reaproveita organizationRepository

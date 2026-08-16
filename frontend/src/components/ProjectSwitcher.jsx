@@ -151,8 +151,8 @@ export default function ProjectSwitcher() {
       setAberto(false);
     } catch (err) {
       // A mensagem do backend já é amigável mesmo no caso mais comum
-      // (limite do plano gratuito: "Plano gratuito permite apenas 1
-      // projeto. Faça upgrade para o plano Pro para criar mais.").
+      // (limite do plano: "Seu plano atual permite no máximo 10
+      // projetos. Faça upgrade para o plano Pro para criar mais.").
       setErro(err.response?.data?.erro || "Não foi possível criar o quadro. Tente novamente.");
     } finally {
       setSalvando(false);

@@ -11,10 +11,13 @@ async function criar({ organizationId, projectId, nome, organizationRole }) {
   garantirPapelGerencial(organizationRole);
 
   // Executa o cálculo da ordem e a criação em transação atômica com lock no projeto
-  return prisma.$transaction(async (tx) => {
-    const ordem = await colunaRepository.proximaOrdem(organizationId, projectId, tx);
-    return colunaRepository.create({ organizationId, projectId, nome, ordem }, tx);
-  });
+  return prisma.$transaction(
+    async (tx) => {
+      const ordem = await colunaRepository.proximaOrdem(organizationId, projectId, tx);
+      return colunaRepository.create({ organizationId, projectId, nome, ordem }, tx);
+    },
+    { maxWait: 10000 }
+  );
 }
 
 async function renomear({ id, organizationId, projectId, nome, organizationRole }) {

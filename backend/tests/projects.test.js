@@ -3,6 +3,7 @@ const app = require("../src/app");
 const { registrarUsuario, adicionarMembro } = require("./helpers/authHelpers");
 const { prisma } = require("./helpers/resetDb");
 const organizationRepository = require("../src/repositories/organization.repository");
+const projectRepository = require("../src/repositories/project.repository");
 
 describe("Projects", () => {
   describe("Autenticação e autorização", () => {
@@ -284,27 +285,53 @@ describe("Projects", () => {
   });
 
   describe("Regras de plano", () => {
-    test("plano Free bloqueia criação do 2º projeto (403)", async () => {
+    test("plano Free permite criar até 10 projetos, e bloqueia o 11º (403)", async () => {
       const usuario = await registrarUsuario("planFree");
 
-      const primeiro = await request(app)
+      for (let i = 1; i <= 10; i++) {
+        const resposta = await request(app)
+          .post(`/organizations/${usuario.organizationId}/projects`)
+          .set("Authorization", `Bearer ${usuario.token}`)
+          .send({ name: `Projeto ${i}` });
+        expect(resposta.status).toBe(201);
+      }
+
+      const totalAntes = await prisma.project.count({
+        where: { organizationId: usuario.organizationId },
+      });
+      expect(totalAntes).toBe(10);
+
+      const decimoPrimeiro = await request(app)
         .post(`/organizations/${usuario.organizationId}/projects`)
         .set("Authorization", `Bearer ${usuario.token}`)
-        .send({ name: "Primeiro Projeto" });
+        .send({ name: "Projeto 11" });
 
-      expect(primeiro.status).toBe(201);
+      expect(decimoPrimeiro.status).toBe(403);
+      expect(decimoPrimeiro.body.erro).toMatch(/limite/i);
+      expect(decimoPrimeiro.body.erro).toMatch(/10 projetos/);
 
-      const segundo = await request(app)
-        .post(`/organizations/${usuario.organizationId}/projects`)
-        .set("Authorization", `Bearer ${usuario.token}`)
-        .send({ name: "Segundo Projeto" });
-
-      expect(segundo.status).toBe(403);
-      expect(segundo.body.erro).toMatch(/plano gratuito/i);
+      const totalDepois = await prisma.project.count({
+        where: { organizationId: usuario.organizationId },
+      });
+      expect(totalDepois).toBe(10);
     });
 
-    test("duas criações concorrentes no plano Free: só uma pode passar (regressão de condição de corrida)", async () => {
+    test("duas criações concorrentes com só 1 vaga restante no plano Free: só uma pode passar (regressão de condição de corrida)", async () => {
       const usuario = await registrarUsuario("planFreeConcorrente");
+
+      // 9 projetos seedados direto no banco (sem passar pela regra, só pra
+      // montar o cenário mais rápido) = 1 vaga livre antes do teto de 10.
+      for (let i = 0; i < 9; i++) {
+        await projectRepository.create({
+          organizationId: usuario.organizationId,
+          name: `Seed ${i}`,
+          type: "saas",
+        });
+      }
+      const totalAntes = await prisma.project.count({
+        where: { organizationId: usuario.organizationId },
+      });
+      expect(totalAntes).toBe(9);
 
       const [respostaA, respostaB] = await Promise.all([
         request(app)
@@ -322,31 +349,68 @@ describe("Projects", () => {
 
       const vencedora = respostaA.status === 201 ? respostaA : respostaB;
       const rejeitada = respostaA.status === 201 ? respostaB : respostaA;
-      expect(rejeitada.body.erro).toMatch(/plano gratuito/i);
+      expect(rejeitada.body.erro).toMatch(/limite/i);
 
       const total = await prisma.project.count({
         where: { organizationId: usuario.organizationId },
       });
-      expect(total).toBe(1);
+      expect(total).toBe(10);
       expect(vencedora.status).toBe(201);
     });
 
-    test("plano Pro permite criar mais de 1 projeto", async () => {
+    test("plano Pro não fica preso ao teto do Free — cria além de 10 projetos normalmente", async () => {
       const usuario = await registrarUsuario("planPro");
       await organizationRepository.updatePlan(usuario.organizationId, "pro");
 
-      const primeiro = await request(app)
-        .post(`/organizations/${usuario.organizationId}/projects`)
-        .set("Authorization", `Bearer ${usuario.token}`)
-        .send({ name: "Primeiro Projeto Pro" });
+      for (let i = 1; i <= 11; i++) {
+        const resposta = await request(app)
+          .post(`/organizations/${usuario.organizationId}/projects`)
+          .set("Authorization", `Bearer ${usuario.token}`)
+          .send({ name: `Projeto Pro ${i}` });
+        expect(resposta.status).toBe(201);
+      }
 
-      const segundo = await request(app)
-        .post(`/organizations/${usuario.organizationId}/projects`)
-        .set("Authorization", `Bearer ${usuario.token}`)
-        .send({ name: "Segundo Projeto Pro" });
+      const total = await prisma.project.count({
+        where: { organizationId: usuario.organizationId },
+      });
+      expect(total).toBe(11);
+    });
 
-      expect(primeiro.status).toBe(201);
-      expect(segundo.status).toBe(201);
+    test("o limite é isolado por organização — organização A no teto não afeta a criação na organização B", async () => {
+      const usuarioA = await registrarUsuario("planFreeIsoladoA");
+      const usuarioB = await registrarUsuario("planFreeIsoladoB");
+
+      // Leva a organização A até o teto (10), direto no banco por rapidez.
+      for (let i = 0; i < 10; i++) {
+        await projectRepository.create({
+          organizationId: usuarioA.organizationId,
+          name: `Seed A ${i}`,
+          type: "saas",
+        });
+      }
+      const totalA = await prisma.project.count({
+        where: { organizationId: usuarioA.organizationId },
+      });
+      expect(totalA).toBe(10);
+
+      const tentativaA = await request(app)
+        .post(`/organizations/${usuarioA.organizationId}/projects`)
+        .set("Authorization", `Bearer ${usuarioA.token}`)
+        .send({ name: "Projeto 11 de A" });
+      expect(tentativaA.status).toBe(403);
+
+      // B está zerada (nenhum projeto ainda) e não é afetada pelo teto de
+      // A — consegue criar normalmente, bem abaixo do limite dela.
+      const criacaoB = await request(app)
+        .post(`/organizations/${usuarioB.organizationId}/projects`)
+        .set("Authorization", `Bearer ${usuarioB.token}`)
+        .send({ name: "Primeiro Projeto de B" });
+      expect(criacaoB.status).toBe(201);
+
+      const totalB = await prisma.project.count({
+        where: { organizationId: usuarioB.organizationId },
+      });
+      expect(totalB).toBe(1);
     });
   });
 

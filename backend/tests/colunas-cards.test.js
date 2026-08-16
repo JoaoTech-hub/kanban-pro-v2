@@ -162,10 +162,8 @@ describe("Colunas e Cards", () => {
     test("404 ao criar card com colunaId de outro projeto", async () => {
       const usuario = await registrarUsuario("cardC");
       const projetoA = await criarProjeto(usuario.token, usuario.organizationId, "Projeto A");
-
-      // plano free só permite 1 projeto — upgrade pra pro pra criar um segundo projeto de teste
-      const organizationRepository = require("../src/repositories/organization.repository");
-      await organizationRepository.updatePlan(usuario.organizationId, "pro");
+      // Plano Free permite até 10 projetos (ver shared/planLimits.js) — não
+      // precisa de upgrade pra Pro só pra ter um 2º projeto neste teste.
       const projetoB = await criarProjeto(usuario.token, usuario.organizationId, "Projeto B");
 
       const colunasDeB = await request(app)

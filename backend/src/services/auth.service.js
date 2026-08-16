@@ -52,7 +52,12 @@ async function registrar({ nome, email, senha }) {
     // antes da primeira query — isso já causou falha real em teste
     // (transação de ~7.9s estourando o limite de 5s). 15s dá margem
     // confortável sem mascarar uma lentidão anormal de verdade.
-    { timeout: 15000 }
+    // maxWait (tempo pra CONSEGUIR um slot e começar a transação, distinto
+    // de timeout, que só conta depois de já ter começado) também fica no
+    // default do Prisma (2000ms) se não for informado — curto demais pro
+    // mesmo cenário de cold start/serverless, e foi a causa raiz confirmada
+    // de um P2028 ("Unable to start a transaction in the given time").
+    { timeout: 15000, maxWait: 10000 }
   );
 
   const token = jwt.sign(
