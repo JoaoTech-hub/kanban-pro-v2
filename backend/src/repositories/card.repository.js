@@ -38,11 +38,24 @@ function findAllByColuna(organizationId, colunaId, tx = prisma) {
 // opostos (A->B numa requisição, B->A na outra) sempre tentam adquirir as
 // travas na mesma sequência, então uma delas simplesmente espera a outra
 // terminar, em vez de as duas ficarem esperando uma pela outra.
+//
+// Retorna os ids que REALMENTE existem e foram travados. Antes usava
+// $executeRaw e descartava o resultado — se uma coluna fosse excluída
+// concorrentemente entre a validação da rota (fora da transação) e este
+// lock, o SELECT...FOR UPDATE simplesmente não achava nada, não travava
+// nada, e nada acusava isso: o código seguia como se a coluna existisse e
+// só quebrava mais adiante, com uma violação de FK crua (P2003) chegando
+// direto no cliente em vez de um 404 limpo. $queryRaw devolve as linhas de
+// fato encontradas, então quem chama consegue comparar com os ids
+// esperados e decidir.
 async function lockColunasParaReordenar(organizationId, colunaIds, tx) {
   const idsOrdenados = [...new Set(colunaIds)].sort();
+  const encontrados = [];
   for (const id of idsOrdenados) {
-    await tx.$executeRaw`SELECT id FROM "colunas" WHERE id = ${id} AND "organization_id" = ${organizationId} FOR UPDATE`;
+    const linhas = await tx.$queryRaw`SELECT id FROM "colunas" WHERE id = ${id} AND "organization_id" = ${organizationId} FOR UPDATE`;
+    if (linhas.length > 0) encontrados.push(id);
   }
+  return encontrados;
 }
 
 // Atualiza coluna + ordem de um único card — usado pela movimentação depois
@@ -55,9 +68,18 @@ function updateOrdem(id, colunaId, ordem, tx) {
   return tx.card.update({ where: { id }, data: { colunaId, ordem } });
 }
 
+// Calcula a próxima `ordem` disponível numa coluna, travando a linha da
+// coluna antes (FOR UPDATE) pra serializar criações concorrentes na mesma
+// coluna. Se a coluna não existir mais no momento do lock (excluída
+// concorrentemente entre a validação da rota e esta chamada), retorna
+// `null` em vez de seguir calculando uma ordem pra uma coluna morta — sem
+// isso, o card seria criado apontando pra um colunaId inexistente,
+// violando a FK (P2003 cru). Quem chama precisa tratar esse `null` como
+// "coluna não encontrada".
 async function proximaOrdem(organizationId, colunaId, tx = prisma) {
   if (tx !== prisma) {
-    await tx.$executeRaw`SELECT id FROM "colunas" WHERE id = ${colunaId} AND "organization_id" = ${organizationId} FOR UPDATE`;
+    const linhas = await tx.$queryRaw`SELECT id FROM "colunas" WHERE id = ${colunaId} AND "organization_id" = ${organizationId} FOR UPDATE`;
+    if (linhas.length === 0) return null;
   }
 
   const resultado = await tx.card.aggregate({

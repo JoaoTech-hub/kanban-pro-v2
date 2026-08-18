@@ -14,6 +14,13 @@ async function criar({ organizationId, projectId, nome, organizationRole }) {
   return prisma.$transaction(
     async (tx) => {
       const ordem = await colunaRepository.proximaOrdem(organizationId, projectId, tx);
+      // proximaOrdem retorna null se o projeto não existe mais no momento do
+      // lock (excluído concorrentemente entre a validação da rota, via
+      // requireProject, e este ponto) — sem essa checagem, o create() abaixo
+      // gravaria uma coluna com projectId apontando pra uma linha inexistente,
+      // violando a FK (P2003 cru chegando no cliente em vez de um 404 limpo).
+      if (ordem === null) throw new NotFoundError("Projeto não encontrado");
+
       return colunaRepository.create({ organizationId, projectId, nome, ordem }, tx);
     },
     { maxWait: 10000 }

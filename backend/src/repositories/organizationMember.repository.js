@@ -84,6 +84,20 @@ async function remove(organizationId, userId) {
   return resultado.count > 0;
 }
 
+// Remoção condicional: só efetiva se, no momento exato desta operação, a
+// role atual do alvo ainda for `roleEsperado`. Mesmo padrão atômico de
+// updateRoleSeAtual, agora para delete — fecha a mesma classe de corrida
+// (TOCTOU) para removerMembro: sem isso, uma remoção autorizada com base
+// numa leitura de role já desatualizada (ex.: alvo foi promovido a admin
+// por outra requisição entre a checagem e esta escrita) seria aceita
+// mesmo já não sendo mais permitida no momento real da escrita.
+async function removeSeRole(organizationId, userId, roleEsperado, client = prisma) {
+  const resultado = await client.organizationMember.deleteMany({
+    where: { organizationId, userId, role: roleEsperado },
+  });
+  return resultado.count > 0;
+}
+
 module.exports = {
   create,
   findByUserAndOrg,
@@ -95,4 +109,5 @@ module.exports = {
   updateRole,
   updateRoleSeAtual,
   remove,
+  removeSeRole,
 };

@@ -24,10 +24,18 @@ function findByIdAndProject(id, organizationId, projectId) {
   return prisma.coluna.findFirst({ where: { id, organizationId, projectId } });
 }
 
+// Calcula a próxima `ordem` disponível pras colunas de um projeto, travando
+// a linha do PROJETO antes (FOR UPDATE) — não a de uma coluna, já que é o
+// projeto quem serializa a criação de colunas dentro dele. Se o projeto não
+// existir mais no momento do lock (excluído concorrentemente entre a
+// validação da rota e esta chamada), retorna `null` em vez de seguir
+// calculando uma ordem pra um projeto morto — sem isso, a coluna seria
+// criada apontando pra um projectId inexistente, violando a FK (P2003 cru).
+// Quem chama precisa tratar esse `null` como "projeto não encontrado".
 async function proximaOrdem(organizationId, projectId, tx = prisma) {
   if (tx !== prisma) {
-    // Bloqueia a linha do projeto no banco para evitar leituras concorrentes de ordem de coluna
-    await tx.$executeRaw`SELECT id FROM "projects" WHERE id = ${projectId} AND "organization_id" = ${organizationId} FOR UPDATE`;
+    const linhas = await tx.$queryRaw`SELECT id FROM "projects" WHERE id = ${projectId} AND "organization_id" = ${organizationId} FOR UPDATE`;
+    if (linhas.length === 0) return null;
   }
 
   const resultado = await tx.coluna.aggregate({

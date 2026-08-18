@@ -1,6 +1,7 @@
 const request = require("supertest");
 const app = require("../src/app");
 const { registrarUsuario } = require("./helpers/authHelpers");
+const { prisma } = require("./helpers/resetDb");
 
 async function criarProjeto(token, organizationId, nome = "Projeto Teste") {
   const res = await request(app)
@@ -636,8 +637,129 @@ describe("Colunas e Cards", () => {
 
       const daColuna = todos.body.filter((c) => c.colunaId === colunaId);
       const ordens = daColuna.map((c) => c.ordem);
-      const ordensUnicas = new Set(ordens);
+            const ordensUnicas = new Set(ordens);
       expect(ordensUnicas.size).toBe(ordens.length);
     });
+  });
+
+  describe("Fase C — concorrência: exclusão de coluna/projeto disputando com criação/movimentação", () => {
+    test(
+      "REGRESSÃO: mover card para uma coluna sendo excluída ao mesmo tempo nunca gera 500 (P2003) — 404 limpo se a coluna já se foi",
+      async () => {
+        const usuario = await registrarUsuario("moverColunaConcorrente");
+        const projeto = await criarProjeto(usuario.token, usuario.organizationId);
+        const colunas = await request(app)
+          .get(`${base(usuario.organizationId, projeto.id)}/colunas`)
+          .set("Authorization", `Bearer ${usuario.token}`);
+        const colunaOrigemId = colunas.body[0].id;
+        const colunaAlvoId = colunas.body[1].id; // a que vamos tentar excluir e mover pra ela ao mesmo tempo
+
+        const cardRes = await request(app)
+          .post(`${base(usuario.organizationId, projeto.id)}/cards`)
+          .set("Authorization", `Bearer ${usuario.token}`)
+          .send({ titulo: "Card a mover", colunaId: colunaOrigemId });
+        const cardId = cardRes.body.id;
+
+        const [respostaExcluir, respostaMover] = await Promise.all([
+          request(app)
+            .delete(`${base(usuario.organizationId, projeto.id)}/colunas/${colunaAlvoId}`)
+            .set("Authorization", `Bearer ${usuario.token}`),
+          request(app)
+            .patch(`${base(usuario.organizationId, projeto.id)}/cards/${cardId}/mover`)
+            .set("Authorization", `Bearer ${usuario.token}`)
+            .send({ colunaId: colunaAlvoId, ordem: 0 }),
+        ]);
+
+        // O achado original: sem a correção, o SELECT...FOR UPDATE que
+        // deveria travar `colunaAlvoId` descartava o resultado — se a
+        // exclusão vencesse a corrida, o mover() seguia em frente como se a
+        // coluna existisse e só quebrava depois, com uma violação de FK crua
+        // (500) chegando no cliente em vez de um 404 limpo.
+        expect(respostaExcluir.status).not.toBe(500);
+        expect(respostaMover.status).not.toBe(500);
+        expect([200, 204]).toContain(respostaExcluir.status);
+        expect([200, 204, 404]).toContain(respostaMover.status);
+
+        if (respostaMover.status === 404) {
+          expect(respostaMover.body.erro).toMatch(/coluna/i);
+          // A coluna realmente não existe mais — o 404 não foi um falso positivo.
+          const colunaAinda = await prisma.coluna.findUnique({ where: { id: colunaAlvoId } });
+          expect(colunaAinda).toBeNull();
+        } else {
+          // O mover() venceu a corrida — o card precisa ter sido
+          // efetivamente movido, com FK válida (a coluna existia no
+          // momento em que o card foi gravado nela).
+          const card = await prisma.card.findUnique({ where: { id: cardId } });
+          expect(card.colunaId).toBe(colunaAlvoId);
+        }
+      }
+    );
+
+    test(
+      "REGRESSÃO: criar card numa coluna sendo excluída ao mesmo tempo nunca gera 500 (P2003) — 404 limpo se a coluna já se foi",
+      async () => {
+        const usuario = await registrarUsuario("criarCardColunaConcorrente");
+        const projeto = await criarProjeto(usuario.token, usuario.organizationId);
+        const colunas = await request(app)
+          .get(`${base(usuario.organizationId, projeto.id)}/colunas`)
+          .set("Authorization", `Bearer ${usuario.token}`);
+        const colunaAlvoId = colunas.body[0].id;
+
+        const [respostaExcluir, respostaCriar] = await Promise.all([
+          request(app)
+            .delete(`${base(usuario.organizationId, projeto.id)}/colunas/${colunaAlvoId}`)
+            .set("Authorization", `Bearer ${usuario.token}`),
+          request(app)
+            .post(`${base(usuario.organizationId, projeto.id)}/cards`)
+            .set("Authorization", `Bearer ${usuario.token}`)
+            .send({ titulo: "Card concorrente com exclusão", colunaId: colunaAlvoId }),
+        ]);
+
+        expect(respostaExcluir.status).not.toBe(500);
+        expect(respostaCriar.status).not.toBe(500);
+        expect([200, 204]).toContain(respostaExcluir.status);
+        expect([201, 404]).toContain(respostaCriar.status);
+
+        if (respostaCriar.status === 404) {
+          expect(respostaCriar.body.erro).toMatch(/coluna/i);
+        } else {
+          const card = await prisma.card.findUnique({ where: { id: respostaCriar.body.id } });
+          expect(card.colunaId).toBe(colunaAlvoId);
+        }
+      }
+    );
+
+    test(
+      "REGRESSÃO: criar coluna num projeto sendo excluído ao mesmo tempo nunca gera 500 (P2003) — 404 limpo se o projeto já se foi",
+      async () => {
+        const usuario = await registrarUsuario("criarColunaProjetoConcorrente");
+        // Precisa de 2 projetos pra exclusão ser permitida (nunca pode
+        // ficar com zero quadros na organização).
+        await criarProjeto(usuario.token, usuario.organizationId, "Projeto Base");
+        const projetoAlvo = await criarProjeto(usuario.token, usuario.organizationId, "Projeto Alvo");
+
+        const [respostaExcluir, respostaCriarColuna] = await Promise.all([
+          request(app)
+            .delete(`/organizations/${usuario.organizationId}/projects/${projetoAlvo.id}`)
+            .set("Authorization", `Bearer ${usuario.token}`),
+          request(app)
+            .post(`${base(usuario.organizationId, projetoAlvo.id)}/colunas`)
+            .set("Authorization", `Bearer ${usuario.token}`)
+            .send({ nome: "Coluna Concorrente" }),
+        ]);
+
+        expect(respostaExcluir.status).not.toBe(500);
+        expect(respostaCriarColuna.status).not.toBe(500);
+        expect(respostaExcluir.status).toBe(204);
+        expect([201, 404]).toContain(respostaCriarColuna.status);
+
+        if (respostaCriarColuna.status === 404) {
+          expect(respostaCriarColuna.body.erro).toMatch(/projeto/i);
+        } else {
+          const projetoAinda = await prisma.project.findUnique({ where: { id: projetoAlvo.id } });
+          expect(projetoAinda).not.toBeNull();
+        }
+      }
+    );
   });
 });

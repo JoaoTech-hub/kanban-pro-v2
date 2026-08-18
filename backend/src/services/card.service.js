@@ -16,6 +16,12 @@ async function criar({ organizationId, projectId, titulo, descricao, prioridade,
   return prisma.$transaction(
     async (tx) => {
       const ordem = await cardRepository.proximaOrdem(organizationId, colunaId, tx);
+      // proximaOrdem retorna null se a coluna não existe mais no momento do
+      // lock (excluída concorrentemente entre a validação acima, fora da
+      // transação, e este ponto) — sem essa checagem, o create() abaixo
+      // gravaria um card com colunaId apontando pra uma linha inexistente,
+      // violando a FK (P2003 cru chegando no cliente em vez de um 404 limpo).
+      if (ordem === null) throw new NotFoundError("Coluna não encontrada");
 
       return cardRepository.create(
         {
@@ -88,11 +94,19 @@ async function mover({ id, organizationId, projectId, colunaId, ordem }) {
       // trava que já existia (evita duas movimentações concorrentes gerarem
       // 'ordem' duplicada), agora estendida para cobrir a origem também, já
       // que mover para outra coluna precisa recompactar as duas.
-      await cardRepository.lockColunasParaReordenar(
+      const idsEsperados = [...new Set([colunaOrigemId, colunaDestinoId])];
+      const idsTravados = await cardRepository.lockColunasParaReordenar(
         organizationId,
-        [colunaOrigemId, colunaDestinoId],
+        idsEsperados,
         tx
       );
+      // Se alguma das colunas esperadas não veio de volta, ela foi excluída
+      // concorrentemente entre a validação da rota (fora da transação) e
+      // este lock — nunca deve prosseguir movendo o card pra uma coluna que
+      // não existe mais.
+      if (idsTravados.length !== idsEsperados.length) {
+        throw new NotFoundError("Coluna não encontrada");
+      }
 
       if (colunaOrigemId === colunaDestinoId) {
         // Caso 1: reordenar dentro da mesma coluna.

@@ -49,7 +49,24 @@ async function alterarRole(organizationId, organizationRole, targetUserId, novoR
   garantirPodeAtribuirRole(organizationRole, novoRole);
   garantirPodeGerenciarMembro(organizationRole, alvo.role);
 
-  await memberRepository.updateRole(organizationId, targetUserId, novoRole);
+  // Escrita condicional (updateRoleSeAtual, não updateRole): só efetiva se a
+  // role do alvo, no momento exato desta escrita, ainda for a mesma que foi
+  // lida e autorizada acima. Fecha uma corrida real: sem isso, uma
+  // requisição concorrente poderia promover o alvo a admin entre a leitura
+  // e esta escrita, e esta chamada (autorizada com base num "member" que já
+  // não existe mais) ainda assim seria aceita — furando a regra de que só o
+  // owner mexe em admin.
+  const atualizado = await memberRepository.updateRoleSeAtual(
+    organizationId,
+    targetUserId,
+    alvo.role,
+    novoRole
+  );
+  if (!atualizado) {
+    throw new ConflictError(
+      "O papel deste membro mudou nos últimos instantes — tente novamente."
+    );
+  }
 }
 
 async function removerMembro(organizationId, organizationRole, targetUserId, usuarioIdLogado) {
@@ -64,7 +81,14 @@ async function removerMembro(organizationId, organizationRole, targetUserId, usu
 
   garantirPodeGerenciarMembro(organizationRole, alvo.role);
 
-  await memberRepository.remove(organizationId, targetUserId);
+  // Mesmo raciocínio de alterarRole, agora pra remoção: removeSeRole só
+  // efetiva se a role do alvo ainda for a mesma autorizada acima.
+  const removido = await memberRepository.removeSeRole(organizationId, targetUserId, alvo.role);
+  if (!removido) {
+    throw new ConflictError(
+      "O papel deste membro mudou nos últimos instantes — tente novamente."
+    );
+  }
 }
 
 // Sair voluntariamente (self-service) — diferente de removerMembro, que é
