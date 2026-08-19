@@ -22,6 +22,25 @@ export function useProjetos(organizationId, aoOrganizacaoInvalida) {
   const [projectId, setProjectId] = useState(() =>
     organizationId ? localStorage.getItem(`projetoAtivo:${organizationId}`) : null
   );
+
+  // Ajusta `projectId` DURANTE o render (não num useEffect) quando
+  // `organizationId` muda — o padrão oficial do React pra "resetar estado
+  // em resposta a uma prop mudar" (docs: "Adjusting state when a prop
+  // changes"). Isso garante que NENHUM componente descendente (em
+  // particular o KanbanContext, que depende de `projectId`) chega a
+  // renderizar sequer uma vez com o `projectId` da organização ANTERIOR
+  // depois que `organizationId` já mudou. Se essa correção rodasse só
+  // dentro de um useEffect (que só dispara DEPOIS do commit), haveria uma
+  // janela real em que o Kanban ainda enxergaria o projectId antigo e
+  // dispararia uma busca com uma combinação organização/projeto que nunca
+  // existiu — sintoma original da Fase D / 7.3 (um 404 momentâneo seguido
+  // de "Falha ao carregar dados" na troca de organização).
+  const [organizationIdAnterior, setOrganizationIdAnterior] = useState(organizationId);
+  if (organizationId !== organizationIdAnterior) {
+    setOrganizationIdAnterior(organizationId);
+    setProjectId(organizationId ? localStorage.getItem(`projetoAtivo:${organizationId}`) : null);
+  }
+
   const [carregando, setCarregando] = useState(true);
   const [erro, setErro] = useState(null);
   const { showToast } = useToast();

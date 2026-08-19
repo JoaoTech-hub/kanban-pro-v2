@@ -378,10 +378,75 @@ describe("useProjetos", () => {
         sucesso = await result.current.excluirProjeto("p1");
       });
 
-      expect(sucesso).toBe(false);
+            expect(sucesso).toBe(false);
       // Rollback: a lista volta a ter os 2 projetos, e o ativo continua o mesmo.
       expect(result.current.projetos.map((p) => p.id)).toEqual(["p1", "p2"]);
       expect(result.current.projectId).toBe("p1");
+    });
+  });
+
+  describe("Fase D / 7.3 — projectId nunca vaza de uma organização pra outra", () => {
+    test("ao mudar organizationId, projectId é resetado IMEDIATAMENTE (mesmo antes de qualquer fetch) — nunca continua com o valor da organização anterior", () => {
+      localStorage.setItem("projetoAtivo:org-A", "proj-A");
+      localStorage.setItem("projetoAtivo:org-B", "proj-B");
+      api.get.mockResolvedValue({ data: [] });
+
+      const { result, rerender } = renderHook(
+        ({ orgId }) => useProjetos(orgId, () => {}),
+        { wrapper, initialProps: { orgId: "org-A" } }
+      );
+
+      expect(result.current.projectId).toBe("proj-A");
+
+      rerender({ orgId: "org-B" });
+
+      // Verificação síncrona, sem nenhum await/waitFor: no exato próximo
+      // render depois da mudança de organizationId, projectId já não pode
+      // mais ser o da organização anterior. Se essa correção dependesse de
+      // um useEffect (que só roda depois do commit), este assert pegaria
+      // "proj-A" aqui, porque a correção ainda não teria acontecido.
+      expect(result.current.projectId).not.toBe("proj-A");
+      expect(result.current.projectId).toBe("proj-B");
+    });
+
+    test("se a nova organização não tem projeto salvo, projectId vira null (nunca o da organização anterior)", () => {
+      localStorage.setItem("projetoAtivo:org-A", "proj-A");
+      api.get.mockResolvedValue({ data: [] });
+
+      const { result, rerender } = renderHook(
+        ({ orgId }) => useProjetos(orgId, () => {}),
+        { wrapper, initialProps: { orgId: "org-A" } }
+      );
+      expect(result.current.projectId).toBe("proj-A");
+
+      rerender({ orgId: "org-C" }); // org-C nunca teve nada salvo
+
+      expect(result.current.projectId).toBeNull();
+    });
+
+    test("depois do reset, carregar() confirma/corrige projectId contra a lista real da nova organização normalmente", async () => {
+      localStorage.setItem("projetoAtivo:org-A", "proj-A");
+      // org-B tem um projeto salvo que corresponde à lista real devolvida pela API.
+      localStorage.setItem("projetoAtivo:org-B", "proj-B");
+      api.get.mockResolvedValue({ data: [{ id: "proj-B", name: "Quadro B" }] });
+
+      const { result, rerender } = renderHook(
+        ({ orgId }) => useProjetos(orgId, () => {}),
+        { wrapper, initialProps: { orgId: "org-A" } }
+      );
+
+      rerender({ orgId: "org-B" });
+      expect(result.current.projectId).toBe("proj-B"); // já correto, antes mesmo do fetch
+
+      await act(async () => {
+        await result.current.carregar();
+      });
+
+      // carregar() confirma o valor contra a lista real — nada muda, porque
+      // já estava certo, e o carregamento termina normalmente.
+      expect(result.current.projectId).toBe("proj-B");
+      expect(result.current.projetos.map((p) => p.id)).toEqual(["proj-B"]);
+      expect(result.current.carregando).toBe(false);
     });
   });
 });

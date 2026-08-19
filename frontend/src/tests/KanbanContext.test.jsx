@@ -2,7 +2,7 @@ import { describe, test, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor, fireEvent } from "@testing-library/react";
 import { useState } from "react";
 import api from "../services/api";
-import { AuthProvider } from "../context/AuthContext";
+import { AuthProvider, useAuth } from "../context/AuthContext";
 import { ToastProvider } from "../context/ToastContext";
 import { ProjectProvider } from "../context/ProjectContext";
 import { KanbanProvider, useKanban } from "../context/KanbanContext";
@@ -57,6 +57,38 @@ function ArvoreComNavegacao() {
         </ToastProvider>
       </MemoryRouter>
     </div>
+  );
+}
+
+// Fase D / 7.3: mesma árvore de sempre, mas com um botão que troca a
+// organização ativa de verdade (via useAuth().trocarOrganizacao), do mesmo
+// jeito que o seletor de organização faria — sem desmontar nenhum Provider.
+function ConsumidorComTrocaDeOrganizacao() {
+  const { trocarOrganizacao } = useAuth();
+  const { colunas, cards, carregouAoMenosUmaVez } = useKanban();
+  return (
+    <div>
+      <button onClick={() => trocarOrganizacao("org-2")}>trocar organização</button>
+      <span data-testid="colunas">{colunas.length}</span>
+      <span data-testid="cards">{cards.length}</span>
+      <span data-testid="carregou">{String(carregouAoMenosUmaVez)}</span>
+    </div>
+  );
+}
+
+function ArvoreComTrocaDeOrganizacao() {
+  return (
+    <MemoryRouter>
+      <ToastProvider>
+        <AuthProvider>
+          <ProjectProvider>
+            <KanbanProvider>
+              <ConsumidorComTrocaDeOrganizacao />
+            </KanbanProvider>
+          </ProjectProvider>
+        </AuthProvider>
+      </ToastProvider>
+    </MemoryRouter>
   );
 }
 
@@ -162,6 +194,75 @@ describe("KanbanContext — dados persistem entre navegações (sem refetch desn
       expect(chamadas).toBe(1);
     });
 
-    resolverProjetos({ data: [{ id: "proj-1", name: "Meu Quadro" }] });
+        resolverProjetos({ data: [{ id: "proj-1", name: "Meu Quadro" }] });
   });
+});
+
+describe("Fase D / 7.3 — projectId nunca vaza da organização anterior ao trocar de organização", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    localStorage.setItem("token", "fake-token");
+    localStorage.setItem("nome", "Fulano");
+    localStorage.setItem("organizationId", "org-1");
+    localStorage.setItem("projetoAtivo:org-1", "proj-1");
+    localStorage.setItem("projetoAtivo:org-2", "proj-2");
+
+    api.get.mockImplementation((url) => {
+      if (url === "/organizations/org-1/projects") {
+        return Promise.resolve({ data: [{ id: "proj-1", name: "Quadro Org 1" }] });
+      }
+      if (url === "/organizations/org-2/projects") {
+        return Promise.resolve({ data: [{ id: "proj-2", name: "Quadro Org 2" }] });
+      }
+      if (url === "/organizations/org-1/projects/proj-1/colunas") {
+        return Promise.resolve({ data: [{ id: "col-1", nome: "A Fazer" }] });
+      }
+      if (url === "/organizations/org-1/projects/proj-1/cards") {
+        return Promise.resolve({ data: [] });
+      }
+      if (url === "/organizations/org-2/projects/proj-2/colunas") {
+        return Promise.resolve({ data: [{ id: "col-2", nome: "A Fazer" }] });
+      }
+      if (url === "/organizations/org-2/projects/proj-2/cards") {
+        return Promise.resolve({ data: [{ id: "card-2", colunaId: "col-2", titulo: "Tarefa Org 2" }] });
+      }
+      // Qualquer OUTRA combinação (em especial org-2 misturado com o
+      // projectId de org-1) é exatamente o bug original — devolve um erro
+      // pra deixar isso visível caso volte a acontecer, em vez de
+      // silenciosamente "funcionar" com dado errado.
+      return Promise.reject({ response: { status: 404, data: { erro: "não encontrado" } } });
+    });
+  });
+
+  test(
+    "trocar de organização nunca dispara uma busca de colunas/cards usando o projectId da organização anterior, e a nova organização carrega normalmente",
+    async () => {
+      render(<ArvoreComTrocaDeOrganizacao />);
+
+      await waitFor(() => expect(screen.getByTestId("carregou").textContent).toBe("true"));
+      expect(screen.getByTestId("colunas").textContent).toBe("1"); // org-1 carregada
+
+      fireEvent.click(screen.getByText("trocar organização"));
+
+      // A nova organização precisa terminar de carregar normalmente.
+      await waitFor(() => {
+        const chamadasColunasOrg2 = api.get.mock.calls.filter(
+          ([url]) => url === "/organizations/org-2/projects/proj-2/colunas"
+        );
+        expect(chamadasColunasOrg2.length).toBeGreaterThan(0);
+      });
+      await waitFor(() => expect(screen.getByTestId("cards").textContent).toBe("1"));
+
+      // Nunca pode ter existido, em nenhum momento da troca, uma chamada
+      // misturando a nova organização com o projectId da organização
+      // ANTERIOR — essa combinação inválida (.../org-2/projects/proj-1/...)
+      // é exatamente o sintoma original: sem a correção em useProjetos.js,
+      // o KanbanContext ainda enxergava `projectId="proj-1"` por uma
+      // fração de segundo depois de `organizationId` já ser "org-2".
+      const chamadasComOrganizacaoEProjetoTrocados = api.get.mock.calls.filter(
+        ([url]) => url.includes("/organizations/org-2/") && url.includes("/proj-1/")
+      );
+      expect(chamadasComOrganizacaoEProjetoTrocados).toHaveLength(0);
+    }
+  );
 });
