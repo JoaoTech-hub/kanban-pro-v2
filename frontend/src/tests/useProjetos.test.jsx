@@ -24,6 +24,26 @@ function wrapper({ children }) {
   return <ToastProvider>{children}</ToastProvider>;
 }
 
+// Constrói uma resposta no formato REAL da listagem paginada de projetos
+// ({ dados, meta }) — usado explicitamente nos testes que precisam
+// exercitar o contrato de paginação de verdade (Fase E / 7.4), em vez do
+// array bruto (fallback legado, mantido em useProjetos.js por segurança —
+// ver comentário lá).
+function respostaPaginada(dados, metaOverrides = {}) {
+  return {
+    data: {
+      dados,
+      meta: {
+        pagina: 1,
+        limite: 20,
+        total: dados.length,
+        totalPaginas: 1,
+        ...metaOverrides,
+      },
+    },
+  };
+}
+
 describe("useProjetos", () => {
   beforeEach(() => {
     api.get.mockReset();
@@ -34,12 +54,14 @@ describe("useProjetos", () => {
   });
 
   test("carrega a lista de projetos e ativa o primeiro quando não há nada salvo", async () => {
-    api.get.mockResolvedValueOnce({
-      data: [
+    // Formato real do backend (Fase E / 7.4): { dados, meta } — exercitando
+    // o contrato de verdade, não o array bruto do fallback.
+    api.get.mockResolvedValueOnce(
+      respostaPaginada([
         { id: "p1", name: "Projeto 1" },
         { id: "p2", name: "Projeto 2" },
-      ],
-    });
+      ])
+    );
 
     const { result } = renderHook(() => useProjetos(ORG_ID), { wrapper });
 
@@ -183,7 +205,7 @@ describe("useProjetos", () => {
   test("criarProjeto propaga o erro (ex.: limite de plano) em vez de tratá-lo internamente", async () => {
     api.get.mockResolvedValueOnce({ data: [{ id: "p1", name: "Projeto 1" }] });
     const erroLimitePlano = {
-      response: { status: 403, data: { erro: "Plano gratuito permite apenas 1 projeto." } },
+      response: { status: 403, data: { erro: "Seu plano atual permite no máximo 10 projetos." } },
     };
     api.post.mockRejectedValueOnce(erroLimitePlano);
 
@@ -378,7 +400,7 @@ describe("useProjetos", () => {
         sucesso = await result.current.excluirProjeto("p1");
       });
 
-            expect(sucesso).toBe(false);
+      expect(sucesso).toBe(false);
       // Rollback: a lista volta a ter os 2 projetos, e o ativo continua o mesmo.
       expect(result.current.projetos.map((p) => p.id)).toEqual(["p1", "p2"]);
       expect(result.current.projectId).toBe("p1");
@@ -447,6 +469,108 @@ describe("useProjetos", () => {
       expect(result.current.projectId).toBe("proj-B");
       expect(result.current.projetos.map((p) => p.id)).toEqual(["proj-B"]);
       expect(result.current.carregando).toBe(false);
+    });
+  });
+
+  describe("Fase E / 7.4 — paginação automática de projetos", () => {
+    test("quando meta.totalPaginas é 1, não faz nenhuma requisição extra além da página 1", async () => {
+      api.get.mockResolvedValueOnce(
+        respostaPaginada([{ id: "p1", name: "Projeto 1" }], { totalPaginas: 1, total: 1 })
+      );
+
+      const { result } = renderHook(() => useProjetos(ORG_ID), { wrapper });
+
+      await act(async () => {
+        await result.current.carregar();
+      });
+
+      expect(api.get).toHaveBeenCalledTimes(1);
+      expect(result.current.projetos).toHaveLength(1);
+    });
+
+    test(
+      "quando meta.totalPaginas > 1, busca automaticamente as páginas seguintes, junta tudo numa lista única, sem perder nenhum projeto e mantendo a ordem recebida",
+      async () => {
+        const paginaUm = [
+          { id: "p1", name: "Projeto 1" },
+          { id: "p2", name: "Projeto 2" },
+        ];
+        const paginaDois = [
+          { id: "p3", name: "Projeto 3" },
+          { id: "p4", name: "Projeto 4" },
+        ];
+        const paginaTres = [{ id: "p5", name: "Projeto 5" }];
+
+        api.get.mockImplementation((url, config) => {
+          const pagina = config?.params?.pagina ?? 1;
+          if (pagina === 1) {
+            return Promise.resolve(
+              respostaPaginada(paginaUm, { pagina: 1, limite: 2, total: 5, totalPaginas: 3 })
+            );
+          }
+          if (pagina === 2) {
+            return Promise.resolve(
+              respostaPaginada(paginaDois, { pagina: 2, limite: 2, total: 5, totalPaginas: 3 })
+            );
+          }
+          if (pagina === 3) {
+            return Promise.resolve(
+              respostaPaginada(paginaTres, { pagina: 3, limite: 2, total: 5, totalPaginas: 3 })
+            );
+          }
+          return Promise.reject(new Error(`página inesperada: ${pagina}`));
+        });
+
+        const { result } = renderHook(() => useProjetos(ORG_ID), { wrapper });
+
+        await act(async () => {
+          await result.current.carregar();
+        });
+
+        // A 1ª requisição busca a página 1 — sem params explícitos, é o
+        // comportamento padrão do backend (pagina=1, limite=20 por default).
+        expect(api.get).toHaveBeenNthCalledWith(1, `/organizations/${ORG_ID}/projects`);
+
+        // As páginas seguintes são buscadas com os params corretos, usando
+        // o `limite` que veio no meta da 1ª resposta — não um valor
+        // hardcoded no frontend.
+        expect(api.get).toHaveBeenCalledWith(`/organizations/${ORG_ID}/projects`, {
+          params: { pagina: 2, limite: 2 },
+        });
+        expect(api.get).toHaveBeenCalledWith(`/organizations/${ORG_ID}/projects`, {
+          params: { pagina: 3, limite: 2 },
+        });
+        expect(api.get).toHaveBeenCalledTimes(3);
+
+        // Todos os 5 projetos das 3 páginas terminam reunidos numa lista
+        // única — nenhum se perde — na mesma ordem em que as páginas foram
+        // recebidas (1, depois 2, depois 3). Para quem consome (ex.:
+        // ProjectSwitcher), `projetos` continua sendo uma lista só, sem
+        // nenhuma paginação visível.
+        expect(result.current.projetos.map((p) => p.id)).toEqual([
+          "p1",
+          "p2",
+          "p3",
+          "p4",
+          "p5",
+        ]);
+        expect(result.current.projetos).toHaveLength(5);
+        expect(result.current.projectId).toBe("p1"); // primeiro da lista, sem nada salvo
+      }
+    );
+
+    test("a paginação automática não interfere no fluxo de organização vazia (o projeto padrão continua sendo criado normalmente)", async () => {
+      api.get.mockResolvedValueOnce(respostaPaginada([], { total: 0, totalPaginas: 1 }));
+      api.post.mockResolvedValueOnce({ data: { id: "p-novo", name: "Meu Quadro" } });
+
+      const { result } = renderHook(() => useProjetos(ORG_ID), { wrapper });
+
+      await act(async () => {
+        await result.current.carregar();
+      });
+
+      expect(api.get).toHaveBeenCalledTimes(1); // nenhuma página extra buscada
+      expect(result.current.projetos).toEqual([{ id: "p-novo", name: "Meu Quadro" }]);
     });
   });
 });

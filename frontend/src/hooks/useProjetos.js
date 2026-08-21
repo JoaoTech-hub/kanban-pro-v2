@@ -54,6 +54,35 @@ export function useProjetos(organizationId, aoOrganizacaoInvalida) {
       const resposta = await api.get(`/organizations/${organizationId}/projects`);
       // Extrai o array da chave .dados (novo formato da Fase 6.5) com fallback para array vazio
       let lista = resposta.data.dados || resposta.data || [];
+      const meta = resposta.data.meta;
+
+      // A listagem é paginada no backend (limite padrão de 20 por página —
+      // ver paginacaoQuerySchema). Se a organização tiver mais projetos do
+      // que cabem numa única página, busca o restante e junta tudo numa
+      // lista só — pro resto do app (ProjectSwitcher, etc.) isso é
+      // invisível: `projetos` continua sendo uma lista única e completa,
+      // nunca truncada. Não existe "carregar mais" nem paginação visível;
+      // é só a garantia de que nenhum projeto além da 1ª página se perde
+      // silenciosamente (só alcançável hoje no plano Pro, que não tem teto
+      // de projetos — o Free nunca passa de 10, sempre cabe numa página).
+      if (meta && meta.totalPaginas > 1) {
+        const buscasRestantes = [];
+        for (let pagina = 2; pagina <= meta.totalPaginas; pagina++) {
+          buscasRestantes.push(
+            api.get(`/organizations/${organizationId}/projects`, {
+              params: { pagina, limite: meta.limite },
+            })
+          );
+        }
+        // Promise.all preserva a ordem dos itens no array de entrada (página
+        // 2, depois 3, ...) — a lista final mantém a mesma ordem que o
+        // backend usa (createdAt asc, ver project.repository.js), só
+        // "achatada" em páginas sucessivas.
+        const respostasRestantes = await Promise.all(buscasRestantes);
+        for (const respostaPagina of respostasRestantes) {
+          lista = lista.concat(respostaPagina.data.dados || []);
+        }
+      }
 
       if (lista.length === 0) {
         // Primeiro acesso: cria o projeto padrão automaticamente, preservando
