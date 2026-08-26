@@ -1,6 +1,6 @@
 const request = require("supertest");
 const app = require("../src/app");
-const { registrarUsuario } = require("./helpers/authHelpers");
+const { registrarUsuario, adicionarMembro } = require("./helpers/authHelpers");
 const { prisma } = require("./helpers/resetDb");
 
 async function criarProjeto(token, organizationId, nome = "Projeto Teste") {
@@ -119,6 +119,113 @@ describe("Colunas e Cards", () => {
       const ordensUnicas = new Set(ordens);
       expect(ordensUnicas.size).toBe(ordens.length);
     });
+
+    test("owner consegue renomear uma coluna", async () => {
+      const usuario = await registrarUsuario("renomearColunaOwner");
+      const projeto = await criarProjeto(usuario.token, usuario.organizationId);
+      const colunas = await request(app)
+        .get(`${base(usuario.organizationId, projeto.id)}/colunas`)
+        .set("Authorization", `Bearer ${usuario.token}`);
+      const colunaId = colunas.body[0].id;
+
+      const resposta = await request(app)
+        .patch(`${base(usuario.organizationId, projeto.id)}/colunas/${colunaId}`)
+        .set("Authorization", `Bearer ${usuario.token}`)
+        .send({ nome: "Nome Renomeado" });
+
+      expect(resposta.status).toBe(200);
+
+      // Persistência real: recarrega do zero (não confia só na resposta).
+      const depois = await request(app)
+        .get(`${base(usuario.organizationId, projeto.id)}/colunas`)
+        .set("Authorization", `Bearer ${usuario.token}`);
+      const colunaAtualizada = depois.body.find((c) => c.id === colunaId);
+      expect(colunaAtualizada.nome).toBe("Nome Renomeado");
+    });
+
+    test("admin consegue renomear uma coluna", async () => {
+      const owner = await registrarUsuario("renomearColunaOwner2");
+      const admin = await registrarUsuario("renomearColunaAdmin2");
+      await adicionarMembro(owner.organizationId, admin.token, "admin");
+      const projeto = await criarProjeto(owner.token, owner.organizationId);
+      const colunas = await request(app)
+        .get(`${base(owner.organizationId, projeto.id)}/colunas`)
+        .set("Authorization", `Bearer ${owner.token}`);
+      const colunaId = colunas.body[0].id;
+
+      const resposta = await request(app)
+        .patch(`${base(owner.organizationId, projeto.id)}/colunas/${colunaId}`)
+        .set("Authorization", `Bearer ${admin.token}`)
+        .send({ nome: "Renomeado pelo Admin" });
+
+      expect(resposta.status).toBe(200);
+    });
+
+    test("member NÃO pode renomear uma coluna (403)", async () => {
+      const owner = await registrarUsuario("renomearColunaOwner3");
+      const membro = await registrarUsuario("renomearColunaMembro3");
+      await adicionarMembro(owner.organizationId, membro.token, "member");
+      const projeto = await criarProjeto(owner.token, owner.organizationId);
+      const colunas = await request(app)
+        .get(`${base(owner.organizationId, projeto.id)}/colunas`)
+        .set("Authorization", `Bearer ${owner.token}`);
+      const colunaId = colunas.body[0].id;
+
+      const resposta = await request(app)
+        .patch(`${base(owner.organizationId, projeto.id)}/colunas/${colunaId}`)
+        .set("Authorization", `Bearer ${membro.token}`)
+        .send({ nome: "Tentativa do Member" });
+
+      expect(resposta.status).toBe(403);
+    });
+
+    test("404 ao renomear uma coluna inexistente", async () => {
+      const usuario = await registrarUsuario("renomearColunaInexistente");
+      const projeto = await criarProjeto(usuario.token, usuario.organizationId);
+      const idInexistente = "00000000-0000-0000-0000-000000000000";
+
+      const resposta = await request(app)
+        .patch(`${base(usuario.organizationId, projeto.id)}/colunas/${idInexistente}`)
+        .set("Authorization", `Bearer ${usuario.token}`)
+        .send({ nome: "Não importa" });
+
+      expect(resposta.status).toBe(404);
+    });
+
+    test("404 ao renomear uma coluna que pertence a outro projeto/organização (IDOR)", async () => {
+      const usuarioA = await registrarUsuario("renomearColunaIdorA");
+      const usuarioB = await registrarUsuario("renomearColunaIdorB");
+      const projetoA = await criarProjeto(usuarioA.token, usuarioA.organizationId);
+      const colunasDeA = await request(app)
+        .get(`${base(usuarioA.organizationId, projetoA.id)}/colunas`)
+        .set("Authorization", `Bearer ${usuarioA.token}`);
+      const colunaDeA = colunasDeA.body[0].id;
+
+      // B tenta renomear a coluna de A usando a própria organização/projeto na URL.
+      const projetoB = await criarProjeto(usuarioB.token, usuarioB.organizationId);
+      const resposta = await request(app)
+        .patch(`${base(usuarioB.organizationId, projetoB.id)}/colunas/${colunaDeA}`)
+        .set("Authorization", `Bearer ${usuarioB.token}`)
+        .send({ nome: "Hackeado" });
+
+      expect(resposta.status).toBe(404);
+    });
+
+    test("400 ao renomear com nome vazio", async () => {
+      const usuario = await registrarUsuario("renomearColunaVazio");
+      const projeto = await criarProjeto(usuario.token, usuario.organizationId);
+      const colunas = await request(app)
+        .get(`${base(usuario.organizationId, projeto.id)}/colunas`)
+        .set("Authorization", `Bearer ${usuario.token}`);
+      const colunaId = colunas.body[0].id;
+
+      const resposta = await request(app)
+        .patch(`${base(usuario.organizationId, projeto.id)}/colunas/${colunaId}`)
+        .set("Authorization", `Bearer ${usuario.token}`)
+        .send({ nome: "" });
+
+      expect(resposta.status).toBe(400);
+    });
   });
 
   describe("Cards", () => {
@@ -178,6 +285,176 @@ describe("Colunas e Cards", () => {
         .send({ titulo: "Card cruzado", colunaId: colunasDeB.body[0].id });
 
       expect(tentativa.status).toBe(404);
+    });
+
+        test("owner consegue editar um card (título, descrição, prioridade)", async () => {
+      const usuario = await registrarUsuario("editarCardOwner");
+      const projeto = await criarProjeto(usuario.token, usuario.organizationId);
+      const colunas = await request(app)
+        .get(`${base(usuario.organizationId, projeto.id)}/colunas`)
+        .set("Authorization", `Bearer ${usuario.token}`);
+      const colunaId = colunas.body[0].id;
+
+      const criado = await request(app)
+        .post(`${base(usuario.organizationId, projeto.id)}/cards`)
+        .set("Authorization", `Bearer ${usuario.token}`)
+        .send({ titulo: "Original", colunaId });
+
+      const resposta = await request(app)
+        .patch(`${base(usuario.organizationId, projeto.id)}/cards/${criado.body.id}`)
+        .set("Authorization", `Bearer ${usuario.token}`)
+        .send({
+          titulo: "Editado pelo Owner",
+          descricao: "Nova descrição",
+          prioridade: "alta",
+          colunaId,
+        });
+
+      expect(resposta.status).toBe(200);
+      expect(resposta.body.titulo).toBe("Editado pelo Owner");
+
+      // Persistência real: recarrega do zero.
+      const lista = await request(app)
+        .get(`${base(usuario.organizationId, projeto.id)}/cards`)
+        .set("Authorization", `Bearer ${usuario.token}`);
+      const cardAtualizado = lista.body.find((c) => c.id === criado.body.id);
+      expect(cardAtualizado.titulo).toBe("Editado pelo Owner");
+      expect(cardAtualizado.descricao).toBe("Nova descrição");
+      expect(cardAtualizado.prioridade).toBe("alta");
+    });
+
+    test("admin consegue editar um card", async () => {
+      const owner = await registrarUsuario("editarCardOwner2");
+      const admin = await registrarUsuario("editarCardAdmin2");
+      await adicionarMembro(owner.organizationId, admin.token, "admin");
+      const projeto = await criarProjeto(owner.token, owner.organizationId);
+      const colunas = await request(app)
+        .get(`${base(owner.organizationId, projeto.id)}/colunas`)
+        .set("Authorization", `Bearer ${owner.token}`);
+      const colunaId = colunas.body[0].id;
+
+      const criado = await request(app)
+        .post(`${base(owner.organizationId, projeto.id)}/cards`)
+        .set("Authorization", `Bearer ${owner.token}`)
+        .send({ titulo: "Original", colunaId });
+
+      const resposta = await request(app)
+        .patch(`${base(owner.organizationId, projeto.id)}/cards/${criado.body.id}`)
+        .set("Authorization", `Bearer ${admin.token}`)
+        .send({ titulo: "Editado pelo Admin", colunaId });
+
+      expect(resposta.status).toBe(200);
+    });
+
+    // member NÃO pode editar (403) já está coberto por
+    // "member NÃO pode editar detalhes do card (403)", mais acima neste arquivo.
+
+    test("404 ao editar um card inexistente", async () => {
+      const usuario = await registrarUsuario("editarCardInexistente");
+      const projeto = await criarProjeto(usuario.token, usuario.organizationId);
+      const colunas = await request(app)
+        .get(`${base(usuario.organizationId, projeto.id)}/colunas`)
+        .set("Authorization", `Bearer ${usuario.token}`);
+      const colunaId = colunas.body[0].id;
+      const idInexistente = "00000000-0000-0000-0000-000000000000";
+
+      const resposta = await request(app)
+        .patch(`${base(usuario.organizationId, projeto.id)}/cards/${idInexistente}`)
+        .set("Authorization", `Bearer ${usuario.token}`)
+        .send({ titulo: "Não importa", colunaId });
+
+      expect(resposta.status).toBe(404);
+    });
+
+    test("404 ao editar um card que pertence a outra organização/projeto (IDOR)", async () => {
+      const usuarioA = await registrarUsuario("editarCardIdorA");
+      const usuarioB = await registrarUsuario("editarCardIdorB");
+      const projetoA = await criarProjeto(usuarioA.token, usuarioA.organizationId);
+      const colunasA = await request(app)
+        .get(`${base(usuarioA.organizationId, projetoA.id)}/colunas`)
+        .set("Authorization", `Bearer ${usuarioA.token}`);
+      const cardDeA = await request(app)
+        .post(`${base(usuarioA.organizationId, projetoA.id)}/cards`)
+        .set("Authorization", `Bearer ${usuarioA.token}`)
+        .send({ titulo: "Card de A", colunaId: colunasA.body[0].id });
+
+      // B tenta editar o card de A usando a própria organização/projeto na URL.
+      const projetoB = await criarProjeto(usuarioB.token, usuarioB.organizationId);
+      const colunasB = await request(app)
+        .get(`${base(usuarioB.organizationId, projetoB.id)}/colunas`)
+        .set("Authorization", `Bearer ${usuarioB.token}`);
+
+      const resposta = await request(app)
+        .patch(`${base(usuarioB.organizationId, projetoB.id)}/cards/${cardDeA.body.id}`)
+        .set("Authorization", `Bearer ${usuarioB.token}`)
+        .send({ titulo: "Hackeado", colunaId: colunasB.body[0].id });
+
+      expect(resposta.status).toBe(404);
+    });
+
+    test("400 ao editar sem enviar colunaId (obrigatório também no PATCH, não só na criação)", async () => {
+      const usuario = await registrarUsuario("editarCardSemColuna");
+      const projeto = await criarProjeto(usuario.token, usuario.organizationId);
+      const colunas = await request(app)
+        .get(`${base(usuario.organizationId, projeto.id)}/colunas`)
+        .set("Authorization", `Bearer ${usuario.token}`);
+      const colunaId = colunas.body[0].id;
+
+      const criado = await request(app)
+        .post(`${base(usuario.organizationId, projeto.id)}/cards`)
+        .set("Authorization", `Bearer ${usuario.token}`)
+        .send({ titulo: "Original", colunaId });
+
+      const resposta = await request(app)
+        .patch(`${base(usuario.organizationId, projeto.id)}/cards/${criado.body.id}`)
+        .set("Authorization", `Bearer ${usuario.token}`)
+        .send({ titulo: "Editado sem colunaId" });
+
+      expect(resposta.status).toBe(400);
+    });
+
+    test("editar com colunaId de outra coluna do mesmo projeto move o card (comportamento real do endpoint)", async () => {
+      const usuario = await registrarUsuario("editarCardTrocaColuna");
+      const projeto = await criarProjeto(usuario.token, usuario.organizationId);
+      const colunas = await request(app)
+        .get(`${base(usuario.organizationId, projeto.id)}/colunas`)
+        .set("Authorization", `Bearer ${usuario.token}`);
+      const colunaOrigemId = colunas.body[0].id;
+      const colunaDestinoId = colunas.body[1].id;
+
+      const criado = await request(app)
+        .post(`${base(usuario.organizationId, projeto.id)}/cards`)
+        .set("Authorization", `Bearer ${usuario.token}`)
+        .send({ titulo: "Card a mover via PATCH", colunaId: colunaOrigemId });
+
+      const resposta = await request(app)
+        .patch(`${base(usuario.organizationId, projeto.id)}/cards/${criado.body.id}`)
+        .set("Authorization", `Bearer ${usuario.token}`)
+        .send({ titulo: "Card a mover via PATCH", colunaId: colunaDestinoId });
+
+      expect(resposta.status).toBe(200);
+      expect(resposta.body.colunaId).toBe(colunaDestinoId);
+    });
+
+    test("400 ao editar com título vazio", async () => {
+      const usuario = await registrarUsuario("editarCardTituloVazio");
+      const projeto = await criarProjeto(usuario.token, usuario.organizationId);
+      const colunas = await request(app)
+        .get(`${base(usuario.organizationId, projeto.id)}/colunas`)
+        .set("Authorization", `Bearer ${usuario.token}`);
+      const colunaId = colunas.body[0].id;
+
+      const criado = await request(app)
+        .post(`${base(usuario.organizationId, projeto.id)}/cards`)
+        .set("Authorization", `Bearer ${usuario.token}`)
+        .send({ titulo: "Original", colunaId });
+
+      const resposta = await request(app)
+        .patch(`${base(usuario.organizationId, projeto.id)}/cards/${criado.body.id}`)
+        .set("Authorization", `Bearer ${usuario.token}`)
+        .send({ titulo: "", colunaId });
+
+      expect(resposta.status).toBe(400);
     });
 
     test("REGRESSÃO (IDOR): usuário B não consegue apagar coluna do projeto de A", async () => {

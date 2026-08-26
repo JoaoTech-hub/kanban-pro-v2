@@ -253,9 +253,387 @@ describe("Fase C — concorrência em alterarRole/removerMembro sobre o mesmo me
       expect([204, 409]).toContain(status);
     }
 
-    const membroFinal = await prisma.organizationMember.findUnique({
+        const membroFinal = await prisma.organizationMember.findUnique({
       where: { organizationId_userId: { organizationId: dono.organizationId, userId: alvoUserId } },
     });
     expect(["admin", "member"]).toContain(membroFinal.role);
+  });
+});
+
+describe("GET /organizations/:id/members (listarMembros)", () => {
+  test("member consegue listar os membros da própria organização", async () => {
+    const dono = await registrarUsuario("listarMembrosDono");
+    const membro = await registrarUsuario("listarMembrosMembro");
+    await adicionarMembro(dono.organizationId, membro.token, "member");
+
+    const resposta = await request(app)
+      .get(`/organizations/${dono.organizationId}/members`)
+      .set("Authorization", `Bearer ${membro.token}`);
+
+    expect(resposta.status).toBe(200);
+    expect(resposta.body.length).toBe(2);
+    const roles = resposta.body.map((m) => m.role).sort();
+    expect(roles).toEqual(["member", "owner"]);
+  });
+
+  test("401 sem token", async () => {
+    const dono = await registrarUsuario("listarMembros401");
+
+    const resposta = await request(app).get(`/organizations/${dono.organizationId}/members`);
+
+    expect(resposta.status).toBe(401);
+  });
+
+  test("403 para quem não pertence à organização", async () => {
+    const donoA = await registrarUsuario("listarMembrosIsolA");
+    const donoB = await registrarUsuario("listarMembrosIsolB");
+
+    const resposta = await request(app)
+      .get(`/organizations/${donoA.organizationId}/members`)
+      .set("Authorization", `Bearer ${donoB.token}`);
+
+    expect(resposta.status).toBe(403);
+  });
+});
+
+describe("PATCH /organizations/:id/members/:userId (alterarRole)", () => {
+  test("owner promove member para admin com sucesso", async () => {
+    const dono = await registrarUsuario("alterarRoleDono1");
+    const alvo = await registrarUsuario("alterarRoleAlvo1");
+    await adicionarMembro(dono.organizationId, alvo.token, "member");
+    const alvoUserId = extrairUserIdDoToken(alvo.token);
+
+    const resposta = await request(app)
+      .patch(`/organizations/${dono.organizationId}/members/${alvoUserId}`)
+      .set("Authorization", `Bearer ${dono.token}`)
+      .send({ role: "admin" });
+
+    expect(resposta.status).toBe(204);
+    const membro = await prisma.organizationMember.findUnique({
+      where: { organizationId_userId: { organizationId: dono.organizationId, userId: alvoUserId } },
+    });
+    expect(membro.role).toBe("admin");
+  });
+
+  test("owner rebaixa admin para member com sucesso", async () => {
+    const dono = await registrarUsuario("alterarRoleDono2");
+    const alvo = await registrarUsuario("alterarRoleAlvo2");
+    await adicionarMembro(dono.organizationId, alvo.token, "admin");
+    const alvoUserId = extrairUserIdDoToken(alvo.token);
+
+    const resposta = await request(app)
+      .patch(`/organizations/${dono.organizationId}/members/${alvoUserId}`)
+      .set("Authorization", `Bearer ${dono.token}`)
+      .send({ role: "member" });
+
+    expect(resposta.status).toBe(204);
+    const membro = await prisma.organizationMember.findUnique({
+      where: { organizationId_userId: { organizationId: dono.organizationId, userId: alvoUserId } },
+    });
+    expect(membro.role).toBe("member");
+  });
+
+  test("admin NÃO pode promover ninguém a admin (403) — só o owner concede admin", async () => {
+    const dono = await registrarUsuario("alterarRoleDono3");
+    const admin = await registrarUsuario("alterarRoleAdmin3");
+    const alvo = await registrarUsuario("alterarRoleAlvo3");
+    await adicionarMembro(dono.organizationId, admin.token, "admin");
+    await adicionarMembro(dono.organizationId, alvo.token, "member");
+    const alvoUserId = extrairUserIdDoToken(alvo.token);
+
+    const resposta = await request(app)
+      .patch(`/organizations/${dono.organizationId}/members/${alvoUserId}`)
+      .set("Authorization", `Bearer ${admin.token}`)
+      .send({ role: "admin" });
+
+    expect(resposta.status).toBe(403);
+  });
+
+  test("admin NÃO pode alterar a role de outro admin (403) — só o owner gerencia admin", async () => {
+    const dono = await registrarUsuario("alterarRoleDono4");
+    const admin1 = await registrarUsuario("alterarRoleAdmin4a");
+    const admin2 = await registrarUsuario("alterarRoleAdmin4b");
+    await adicionarMembro(dono.organizationId, admin1.token, "admin");
+    await adicionarMembro(dono.organizationId, admin2.token, "admin");
+    const admin2UserId = extrairUserIdDoToken(admin2.token);
+
+    const resposta = await request(app)
+      .patch(`/organizations/${dono.organizationId}/members/${admin2UserId}`)
+      .set("Authorization", `Bearer ${admin1.token}`)
+      .send({ role: "member" });
+
+    expect(resposta.status).toBe(403);
+  });
+
+  test("member (não admin/owner) NÃO pode alterar role de ninguém (403)", async () => {
+    const dono = await registrarUsuario("alterarRoleDono5");
+    const membro = await registrarUsuario("alterarRoleMembro5");
+    const alvo = await registrarUsuario("alterarRoleAlvo5");
+    await adicionarMembro(dono.organizationId, membro.token, "member");
+    await adicionarMembro(dono.organizationId, alvo.token, "member");
+    const alvoUserId = extrairUserIdDoToken(alvo.token);
+
+    const resposta = await request(app)
+      .patch(`/organizations/${dono.organizationId}/members/${alvoUserId}`)
+      .set("Authorization", `Bearer ${membro.token}`)
+      .send({ role: "admin" });
+
+    expect(resposta.status).toBe(403);
+  });
+
+  test("ninguém consegue alterar a role do owner (403) — nem o próprio owner, via este endpoint", async () => {
+    const dono = await registrarUsuario("alterarRoleDono6");
+    const donoUserId = extrairUserIdDoToken(dono.token);
+
+    const resposta = await request(app)
+      .patch(`/organizations/${dono.organizationId}/members/${donoUserId}`)
+      .set("Authorization", `Bearer ${dono.token}`)
+      .send({ role: "member" });
+
+    expect(resposta.status).toBe(403);
+    const membro = await prisma.organizationMember.findUnique({
+      where: { organizationId_userId: { organizationId: dono.organizationId, userId: donoUserId } },
+    });
+    expect(membro.role).toBe("owner");
+  });
+
+  test("404 ao tentar alterar a role de alguém que não é membro da organização", async () => {
+    const dono = await registrarUsuario("alterarRoleDono7");
+    const forasteiro = await registrarUsuario("alterarRoleForasteiro7");
+    const forasteiroUserId = extrairUserIdDoToken(forasteiro.token);
+
+    const resposta = await request(app)
+      .patch(`/organizations/${dono.organizationId}/members/${forasteiroUserId}`)
+      .set("Authorization", `Bearer ${dono.token}`)
+      .send({ role: "admin" });
+
+    expect(resposta.status).toBe(404);
+  });
+
+  test("400 ao enviar um valor de role inválido (ex.: 'owner' ou um papel inexistente)", async () => {
+    const dono = await registrarUsuario("alterarRoleDono8");
+    const alvo = await registrarUsuario("alterarRoleAlvo8");
+    await adicionarMembro(dono.organizationId, alvo.token, "member");
+    const alvoUserId = extrairUserIdDoToken(alvo.token);
+
+    const tentativaOwner = await request(app)
+      .patch(`/organizations/${dono.organizationId}/members/${alvoUserId}`)
+      .set("Authorization", `Bearer ${dono.token}`)
+      .send({ role: "owner" });
+    expect(tentativaOwner.status).toBe(400);
+
+    const tentativaInvalida = await request(app)
+      .patch(`/organizations/${dono.organizationId}/members/${alvoUserId}`)
+      .set("Authorization", `Bearer ${dono.token}`)
+      .send({ role: "gerente" });
+    expect(tentativaInvalida.status).toBe(400);
+  });
+
+  test("403 ao tentar alterar role usando uma organização à qual o autor não pertence (IDOR)", async () => {
+    const donoA = await registrarUsuario("alterarRoleIdorA");
+    const donoB = await registrarUsuario("alterarRoleIdorB");
+    const donoBUserId = extrairUserIdDoToken(donoB.token);
+
+    const resposta = await request(app)
+      .patch(`/organizations/${donoA.organizationId}/members/${donoBUserId}`)
+      .set("Authorization", `Bearer ${donoB.token}`)
+      .send({ role: "admin" });
+
+    expect(resposta.status).toBe(403);
+  });
+});
+
+describe("DELETE /organizations/:id/members/:userId (removerMembro)", () => {
+  test("owner remove um member com sucesso", async () => {
+    const dono = await registrarUsuario("removerDono1");
+    const alvo = await registrarUsuario("removerAlvo1");
+    await adicionarMembro(dono.organizationId, alvo.token, "member");
+    const alvoUserId = extrairUserIdDoToken(alvo.token);
+
+    const resposta = await request(app)
+      .delete(`/organizations/${dono.organizationId}/members/${alvoUserId}`)
+      .set("Authorization", `Bearer ${dono.token}`);
+
+    expect(resposta.status).toBe(204);
+    const membro = await prisma.organizationMember.findUnique({
+      where: { organizationId_userId: { organizationId: dono.organizationId, userId: alvoUserId } },
+    });
+    expect(membro).toBeNull();
+  });
+
+  test("owner remove um admin com sucesso (owner pode gerenciar admin)", async () => {
+    const dono = await registrarUsuario("removerDono2");
+    const admin = await registrarUsuario("removerAdmin2");
+    await adicionarMembro(dono.organizationId, admin.token, "admin");
+    const adminUserId = extrairUserIdDoToken(admin.token);
+
+    const resposta = await request(app)
+      .delete(`/organizations/${dono.organizationId}/members/${adminUserId}`)
+      .set("Authorization", `Bearer ${dono.token}`);
+
+    expect(resposta.status).toBe(204);
+  });
+
+  test("admin remove um member com sucesso", async () => {
+    const dono = await registrarUsuario("removerDono3");
+    const admin = await registrarUsuario("removerAdmin3");
+    const alvo = await registrarUsuario("removerAlvo3");
+    await adicionarMembro(dono.organizationId, admin.token, "admin");
+    await adicionarMembro(dono.organizationId, alvo.token, "member");
+    const alvoUserId = extrairUserIdDoToken(alvo.token);
+
+    const resposta = await request(app)
+      .delete(`/organizations/${dono.organizationId}/members/${alvoUserId}`)
+      .set("Authorization", `Bearer ${admin.token}`);
+
+    expect(resposta.status).toBe(204);
+  });
+
+  test("admin NÃO pode remover outro admin (403)", async () => {
+    const dono = await registrarUsuario("removerDono4");
+    const admin1 = await registrarUsuario("removerAdmin4a");
+    const admin2 = await registrarUsuario("removerAdmin4b");
+    await adicionarMembro(dono.organizationId, admin1.token, "admin");
+    await adicionarMembro(dono.organizationId, admin2.token, "admin");
+    const admin2UserId = extrairUserIdDoToken(admin2.token);
+
+    const resposta = await request(app)
+      .delete(`/organizations/${dono.organizationId}/members/${admin2UserId}`)
+      .set("Authorization", `Bearer ${admin1.token}`);
+
+    expect(resposta.status).toBe(403);
+  });
+
+  test("member (não admin/owner) NÃO pode remover ninguém (403)", async () => {
+    const dono = await registrarUsuario("removerDono5");
+    const membro = await registrarUsuario("removerMembro5");
+    const alvo = await registrarUsuario("removerAlvo5");
+    await adicionarMembro(dono.organizationId, membro.token, "member");
+    await adicionarMembro(dono.organizationId, alvo.token, "member");
+    const alvoUserId = extrairUserIdDoToken(alvo.token);
+
+    const resposta = await request(app)
+      .delete(`/organizations/${dono.organizationId}/members/${alvoUserId}`)
+      .set("Authorization", `Bearer ${membro.token}`);
+
+    expect(resposta.status).toBe(403);
+  });
+
+  test("ninguém consegue remover o owner (403)", async () => {
+    const dono = await registrarUsuario("removerDono6");
+    const admin = await registrarUsuario("removerAdmin6");
+    await adicionarMembro(dono.organizationId, admin.token, "admin");
+    const donoUserId = extrairUserIdDoToken(dono.token);
+
+    const resposta = await request(app)
+      .delete(`/organizations/${dono.organizationId}/members/${donoUserId}`)
+      .set("Authorization", `Bearer ${admin.token}`);
+
+    expect(resposta.status).toBe(403);
+    const membro = await prisma.organizationMember.findUnique({
+      where: { organizationId_userId: { organizationId: dono.organizationId, userId: donoUserId } },
+    });
+    expect(membro).not.toBeNull();
+  });
+
+  test("409 ao tentar remover a si mesmo por este endpoint", async () => {
+    const dono = await registrarUsuario("removerDono7");
+    const admin = await registrarUsuario("removerAdmin7");
+    await adicionarMembro(dono.organizationId, admin.token, "admin");
+    const adminUserId = extrairUserIdDoToken(admin.token);
+
+    const resposta = await request(app)
+      .delete(`/organizations/${dono.organizationId}/members/${adminUserId}`)
+      .set("Authorization", `Bearer ${admin.token}`);
+
+    expect(resposta.status).toBe(409);
+    const membro = await prisma.organizationMember.findUnique({
+      where: { organizationId_userId: { organizationId: dono.organizationId, userId: adminUserId } },
+    });
+    expect(membro).not.toBeNull();
+  });
+
+  test("404 ao tentar remover alguém que não é membro da organização", async () => {
+    const dono = await registrarUsuario("removerDono8");
+    const forasteiro = await registrarUsuario("removerForasteiro8");
+    const forasteiroUserId = extrairUserIdDoToken(forasteiro.token);
+
+    const resposta = await request(app)
+      .delete(`/organizations/${dono.organizationId}/members/${forasteiroUserId}`)
+      .set("Authorization", `Bearer ${dono.token}`);
+
+    expect(resposta.status).toBe(404);
+  });
+});
+
+
+describe("PATCH /organizations/:id (atualizarNome)", () => {
+  test("owner consegue renomear a organização", async () => {
+    const dono = await registrarUsuario("renomearOrgOwner1");
+
+    const resposta = await request(app)
+      .patch(`/organizations/${dono.organizationId}`)
+      .set("Authorization", `Bearer ${dono.token}`)
+      .send({ name: "Nome Novo da Organização" });
+
+    expect(resposta.status).toBe(200);
+    expect(resposta.body.name).toBe("Nome Novo da Organização");
+
+    // Persistência real: recarrega do zero, não confia só na resposta.
+    const registro = await prisma.organization.findUnique({ where: { id: dono.organizationId } });
+    expect(registro.name).toBe("Nome Novo da Organização");
+  });
+
+  test("admin NÃO pode renomear a organização (403) — só o owner, diferente das outras ações de gestão", async () => {
+    const dono = await registrarUsuario("renomearOrgDono2");
+    const admin = await registrarUsuario("renomearOrgAdmin2");
+    await adicionarMembro(dono.organizationId, admin.token, "admin");
+
+    const resposta = await request(app)
+      .patch(`/organizations/${dono.organizationId}`)
+      .set("Authorization", `Bearer ${admin.token}`)
+      .send({ name: "Tentativa do Admin" });
+
+    expect(resposta.status).toBe(403);
+    const registro = await prisma.organization.findUnique({ where: { id: dono.organizationId } });
+    expect(registro.name).not.toBe("Tentativa do Admin");
+  });
+
+  test("member NÃO pode renomear a organização (403)", async () => {
+    const dono = await registrarUsuario("renomearOrgDono3");
+    const membro = await registrarUsuario("renomearOrgMembro3");
+    await adicionarMembro(dono.organizationId, membro.token, "member");
+
+    const resposta = await request(app)
+      .patch(`/organizations/${dono.organizationId}`)
+      .set("Authorization", `Bearer ${membro.token}`)
+      .send({ name: "Tentativa do Member" });
+
+    expect(resposta.status).toBe(403);
+  });
+
+  test("400 ao renomear com nome vazio", async () => {
+    const dono = await registrarUsuario("renomearOrgDono4");
+
+    const resposta = await request(app)
+      .patch(`/organizations/${dono.organizationId}`)
+      .set("Authorization", `Bearer ${dono.token}`)
+      .send({ name: "" });
+
+    expect(resposta.status).toBe(400);
+  });
+
+  test("403 para quem não pertence à organização (IDOR)", async () => {
+    const donoA = await registrarUsuario("renomearOrgIdorA");
+    const donoB = await registrarUsuario("renomearOrgIdorB");
+
+    const resposta = await request(app)
+      .patch(`/organizations/${donoA.organizationId}`)
+      .set("Authorization", `Bearer ${donoB.token}`)
+      .send({ name: "Nome Hackeado" });
+
+    expect(resposta.status).toBe(403);
+    const registro = await prisma.organization.findUnique({ where: { id: donoA.organizationId } });
+    expect(registro.name).not.toBe("Nome Hackeado");
   });
 });
