@@ -290,8 +290,8 @@ Nenhum outro arquivo do projeto precisa mudar — nem os services que disparam e
 - [x] Recuperação de senha por e-mail (backend + frontend)
 - [x] Múltiplos quadros por organização (criar, trocar, excluir — respeitando o limite do plano)
 - [ ] Deploy público (Vercel + Render/Railway)
-- [ ] Convite de membros para uma organização
-- [ ] Paginação em listagens de projetos/colunas/cards
+- [x] Convite de membros para uma organização
+- [x] Paginação em listagens de projetos/colunas/cards
 - [ ] Documentação da API (OpenAPI/Swagger)
 
 ## 📄 Licença

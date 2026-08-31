@@ -1,0 +1,1239 @@
+openapi: 3.0.3
+info:
+  title: Kanban Pro API
+  description: >
+    API REST multi-tenant de um SaaS de gerenciamento de tarefas estilo
+    Kanban: organizações, projetos (quadros), colunas, cards, membros e
+    convites, com controle de acesso por papel (owner/admin/member).
+
+
+    Este documento foi levantado diretamente do código-fonte atual
+    (rotas, validadores Zod, controllers e services) — nenhum endpoint ou
+    comportamento aqui descrito é hipotético ou planejado; tudo já está
+    implementado e coberto por testes automatizados (backend e frontend).
+
+
+    **Envelope de erro:** toda resposta de erro segue o mesmo formato,
+    `{ "erro": "<mensagem>" }`, com o código HTTP correspondente
+    (400/401/403/404/409/500). Esse envelope é omitido nos exemplos de
+    resposta abaixo para não repetir em cada endpoint — está descrito uma
+    única vez no schema `Erro`, referenciado em todas as respostas de erro.
+  version: "1.0.0"
+
+servers:
+  - url: http://localhost:3000
+    description: Ambiente local de desenvolvimento
+
+tags:
+  - name: Autenticação
+    description: Registro, login e recuperação de senha. Rotas públicas.
+  - name: Convites (públicas)
+    description: >
+      Consulta e aceite de convite por quem foi convidado — não exigem
+      pertencer à organização (algumas nem exigem estar autenticado).
+  - name: Organizações
+    description: Lista de organizações do usuário logado, e dados da organização atual.
+  - name: Membros
+    description: Gestão de membros de uma organização (papéis, remoção, saída, transferência de ownership).
+  - name: Convites (gestão)
+    description: Criação, listagem e revogação de convites — ações de quem já está na organização.
+  - name: Projetos
+    description: Quadros Kanban dentro de uma organização.
+  - name: Colunas
+    description: Colunas de um quadro.
+  - name: Cards
+    description: Tarefas dentro de uma coluna.
+  - name: Perfil
+    description: Dados da própria conta do usuário logado.
+
+security:
+  - bearerAuth: []
+
+paths:
+  # ───────────────────────────── Autenticação ─────────────────────────────
+  /registro:
+    post:
+      tags: [Autenticação]
+      summary: Cria uma conta nova e a organização inicial do usuário
+      description: >
+        Cria o usuário, uma organização nova (plano Free) e o vínculo do
+        usuário como owner dessa organização, tudo numa única operação.
+        Rota pública.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, email, password]
+              properties:
+                name: { type: string, minLength: 1, maxLength: 100 }
+                email: { type: string, format: email, maxLength: 160, description: "Normalizado para minúsculas e sem espaços nas pontas." }
+                password:
+                  type: string
+                  description: "Mínimo 8 caracteres, pelo menos 1 letra e 1 número."
+                  minLength: 8
+      responses:
+        "201":
+          description: Conta e organização criadas com sucesso.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AuthResposta" }
+        "400": { $ref: "#/components/responses/ErroValidacao" }
+        "409":
+          description: E-mail já cadastrado.
+          content:
+            application/json: { schema: { $ref: "#/components/schemas/Erro" } }
+
+  /login:
+    post:
+      tags: [Autenticação]
+      summary: Autentica com e-mail e senha
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email: { type: string, format: email }
+                password: { type: string }
+      responses:
+        "200":
+          description: Login efetuado com sucesso.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AuthResposta" }
+        "400": { $ref: "#/components/responses/ErroValidacao" }
+        "401":
+          description: E-mail ou senha incorretos.
+          content:
+            application/json: { schema: { $ref: "#/components/schemas/Erro" } }
+
+  /esqueci-senha:
+    post:
+      tags: [Autenticação]
+      summary: Solicita o e-mail de recuperação de senha
+      description: >
+        Sempre responde 200 com a mesma mensagem genérica, exista ou não
+        uma conta com esse e-mail — evita que a resposta seja usada para
+        descobrir quais e-mails têm conta (enumeration).
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email]
+              properties:
+                email: { type: string, format: email }
+      responses:
+        "200":
+          description: Mensagem genérica de confirmação (não indica se o e-mail existe).
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  mensagem: { type: string, example: "Se esse e-mail existir, enviamos um link de recuperação." }
+        "400": { $ref: "#/components/responses/ErroValidacao" }
+
+  /redefinir-senha:
+    post:
+      tags: [Autenticação]
+      summary: Redefine a senha usando o token recebido por e-mail
+      description: >
+        Consumir o token invalida todas as sessões antigas do usuário
+        (revogação via `tokenVersion`) — qualquer JWT emitido antes da
+        troca deixa de ser aceito.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token, novaSenha]
+              properties:
+                token: { type: string, description: "Token bruto recebido no link do e-mail." }
+                novaSenha:
+                  type: string
+                  description: "Mesma política de senha forte do registro."
+      responses:
+        "200":
+          description: Senha redefinida com sucesso.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  mensagem: { type: string, example: "Senha redefinida com sucesso." }
+        "400": { $ref: "#/components/responses/ErroValidacao" }
+        "401":
+          description: Token inválido, expirado ou já utilizado.
+          content:
+            application/json: { schema: { $ref: "#/components/schemas/Erro" } }
+
+  # ───────────────────────────── Convites (públicas) ─────────────────────────────
+  /convites/{token}:
+    get:
+      tags: [Convites (públicas)]
+      summary: Consulta os dados públicos de um convite
+      description: >
+        Usada pela tela de aceite do convite para decidir se mostra
+        formulário de cadastro (conta nova) ou de login (conta já
+        existente) — `contaExistente` indica isso. Não exige autenticação.
+      security: []
+      parameters:
+        - $ref: "#/components/parameters/TokenConvite"
+      responses:
+        "200":
+          description: Convite válido — dados públicos retornados.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ConviteDadosPublicos" }
+        "401":
+          description: Token inválido, expirado ou já utilizado (aceito ou revogado).
+          content:
+            application/json: { schema: { $ref: "#/components/schemas/Erro" } }
+
+  /convites/{token}/aceitar-novo:
+    post:
+      tags: [Convites (públicas)]
+      summary: Aceita um convite criando uma conta nova
+      description: >
+        Só funciona se o e-mail do convite ainda não tiver conta. Cria o
+        usuário e o vínculo à organização (com a role definida no
+        convite) na mesma transação. Se o plano da organização tiver
+        limite de membros e ele já tiver sido atingido no momento exato
+        do aceite, a operação é recusada mesmo que o convite em si ainda
+        fosse válido.
+      security: []
+      parameters:
+        - $ref: "#/components/parameters/TokenConvite"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [nome, senha]
+              properties:
+                nome: { type: string, minLength: 1, maxLength: 100 }
+                senha: { type: string, description: "Mesma política de senha forte do registro." }
+      responses:
+        "201":
+          description: Conta criada e vínculo com a organização estabelecido.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AuthResposta" }
+        "400": { $ref: "#/components/responses/ErroValidacao" }
+        "401":
+          description: Token inválido, expirado ou já utilizado.
+          content:
+            application/json: { schema: { $ref: "#/components/schemas/Erro" } }
+        "403":
+          description: A organização já atingiu o limite de membros do plano atual.
+          content:
+            application/json: { schema: { $ref: "#/components/schemas/Erro" } }
+        "409":
+          description: Já existe uma conta com esse e-mail — deveria usar aceitar-existente.
+          content:
+            application/json: { schema: { $ref: "#/components/schemas/Erro" } }
+
+  /convites/{token}/aceitar-existente:
+    post:
+      tags: [Convites (públicas)]
+      summary: Aceita um convite com uma conta que já existe
+      description: >
+        Exige estar autenticado com uma conta cujo e-mail bata exatamente
+        com o e-mail do convite. Mesma checagem de limite de membros do
+        plano do endpoint de conta nova, aplicada no momento do aceite.
+      parameters:
+        - $ref: "#/components/parameters/TokenConvite"
+      responses:
+        "200":
+          description: Vínculo com a organização estabelecido.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  organizationId: { type: string, format: uuid }
+        "401":
+          description: Sem token de autenticação, ou convite inválido/expirado/já utilizado.
+          content:
+            application/json: { schema: { $ref: "#/components/schemas/Erro" } }
+        "403":
+          description: >
+            A conta logada não é dona do e-mail do convite, OU a
+            organização já atingiu o limite de membros do plano atual.
+          content:
+            application/json: { schema: { $ref: "#/components/schemas/Erro" } }
+        "409":
+          description: A conta logada já é membro dessa organização.
+          content:
+            application/json: { schema: { $ref: "#/components/schemas/Erro" } }
+
+  # ───────────────────────────── Organizações ─────────────────────────────
+  /organizations:
+    get:
+      tags: [Organizações]
+      summary: Lista as organizações do usuário logado
+      description: Cada item já vem com o papel do usuário logado naquela organização.
+      responses:
+        "200":
+          description: Lista de organizações.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/OrganizacaoResumo" }
+        "401": { $ref: "#/components/responses/NaoAutenticado" }
+
+  /organizations/{organizationId}:
+    patch:
+      tags: [Organizações]
+      summary: Renomeia a organização
+      description: >
+        Exige ser owner — **diferente da maioria das outras ações de
+        gestão**, que aceitam owner OU admin. Aqui, admin recebe 403.
+      parameters:
+        - $ref: "#/components/parameters/OrganizationId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name: { type: string, minLength: 1, maxLength: 120 }
+      responses:
+        "200":
+          description: Organização renomeada.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id: { type: string, format: uuid }
+                  name: { type: string }
+        "400": { $ref: "#/components/responses/ErroValidacao" }
+        "401": { $ref: "#/components/responses/NaoAutenticado" }
+        "403":
+          description: Quem chamou não é owner, ou não pertence a esta organização.
+          content:
+            application/json: { schema: { $ref: "#/components/schemas/Erro" } }
+
+  # ───────────────────────────── Membros ─────────────────────────────
+  /organizations/{organizationId}/members:
+    get:
+      tags: [Membros]
+      summary: Lista os membros da organização
+      description: Qualquer membro pode listar — não é uma ação gerencial.
+      parameters:
+        - $ref: "#/components/parameters/OrganizationId"
+      responses:
+        "200":
+          description: Lista de membros.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Membro" }
+        "401": { $ref: "#/components/responses/NaoAutenticado" }
+        "403": { $ref: "#/components/responses/ForaDaOrganizacao" }
+
+  /organizations/{organizationId}/members/me:
+    delete:
+      tags: [Membros]
+      summary: Sair da organização (self-service)
+      description: >
+        O owner nunca pode sair por aqui (precisa transferir a
+        propriedade antes). Devolve a lista de organizações restantes do
+        usuário, já atualizada, pra o frontend trocar de organização sem
+        uma segunda chamada.
+      parameters:
+        - $ref: "#/components/parameters/OrganizationId"
+      responses:
+        "200":
+          description: Saiu com sucesso.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  organizacoes:
+                    type: array
+                    items: { $ref: "#/components/schemas/OrganizacaoResumo" }
+        "401": { $ref: "#/components/responses/NaoAutenticado" }
+        "403":
+          description: O owner não pode sair sem antes transferir a propriedade.
+          content:
+            application/json: { schema: { $ref: "#/components/schemas/Erro" } }
+
+  /organizations/{organizationId}/members/transfer-ownership:
+    post:
+      tags: [Membros]
+      summary: Transfere a propriedade da organização para outro membro
+      description: >
+        Só o owner atual pode chamar. O alvo pode ser qualquer membro
+        atual (admin ou member) — não precisa já ser admin. Ao final, o
+        owner anterior vira admin.
+      parameters:
+        - $ref: "#/components/parameters/OrganizationId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [novoOwnerUserId]
+              properties:
+                novoOwnerUserId: { type: string, format: uuid }
+      responses:
+        "204": { description: Propriedade transferida com sucesso. }
+        "400": { $ref: "#/components/responses/ErroValidacao" }
+        "401": { $ref: "#/components/responses/NaoAutenticado" }
+        "403":
+          description: Quem chamou não é o owner atual.
+          content:
+            application/json: { schema: { $ref: "#/components/schemas/Erro" } }
+        "404":
+          description: O usuário alvo não é membro desta organização.
+          content:
+            application/json: { schema: { $ref: "#/components/schemas/Erro" } }
+        "409":
+          description: >
+            O alvo já é o owner, ou o papel de alguém envolvido mudou nos
+            últimos instantes (condição de corrida detectada — tente
+            novamente).
+          content:
+            application/json: { schema: { $ref: "#/components/schemas/Erro" } }
+
+  /organizations/{organizationId}/members/{userId}:
+    patch:
+      tags: [Membros]
+      summary: Altera o papel (role) de um membro
+      description: >
+        Owner e admin podem gerenciar member. Só o owner pode gerenciar
+        (ou conceder) o papel admin. Ninguém pode alterar o papel do
+        owner por esta rota (nem o próprio owner) — use a transferência
+        de propriedade. `role` só aceita `admin` ou `member`; `owner`
+        nunca é um valor aceito aqui.
+      parameters:
+        - $ref: "#/components/parameters/OrganizationId"
+        - $ref: "#/components/parameters/UserId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [role]
+              properties:
+                role: { type: string, enum: [admin, member] }
+      responses:
+        "204": { description: Papel atualizado com sucesso. }
+        "400": { $ref: "#/components/responses/ErroValidacao" }
+        "401": { $ref: "#/components/responses/NaoAutenticado" }
+        "403":
+          description: >
+            Sem permissão (member tentando gerenciar alguém; admin
+            tentando gerenciar outro admin ou conceder admin; qualquer
+            um tentando alterar o owner).
+          content:
+            application/json: { schema: { $ref: "#/components/schemas/Erro" } }
+        "404":
+          description: O usuário alvo não é membro desta organização.
+          content:
+            application/json: { schema: { $ref: "#/components/schemas/Erro" } }
+        "409":
+          description: O papel do alvo mudou nos últimos instantes (condição de corrida) — tente novamente.
+          content:
+            application/json: { schema: { $ref: "#/components/schemas/Erro" } }
+    delete:
+      tags: [Membros]
+      summary: Remove um membro da organização
+      description: >
+        Mesma matriz de autorização de alterar papel. Ninguém pode
+        remover o próprio owner. Também não é possível remover a si
+        mesmo por esta rota — use `DELETE .../members/me`.
+      parameters:
+        - $ref: "#/components/parameters/OrganizationId"
+        - $ref: "#/components/parameters/UserId"
+      responses:
+        "204": { description: Membro removido com sucesso. }
+        "401": { $ref: "#/components/responses/NaoAutenticado" }
+        "403":
+          description: Sem permissão pra remover este membro (mesmas regras de alterar papel).
+          content:
+            application/json: { schema: { $ref: "#/components/schemas/Erro" } }
+        "404":
+          description: O usuário alvo não é membro desta organização.
+          content:
+            application/json: { schema: { $ref: "#/components/schemas/Erro" } }
+        "409":
+          description: >
+            Tentativa de remover a si mesmo por esta rota, ou o papel do
+            alvo mudou nos últimos instantes (condição de corrida) —
+            tente novamente.
+          content:
+            application/json: { schema: { $ref: "#/components/schemas/Erro" } }
+
+  # ───────────────────────────── Convites (gestão) ─────────────────────────────
+  /organizations/{organizationId}/invites:
+    get:
+      tags: [Convites (gestão)]
+      summary: Lista os convites pendentes da organização
+      description: >
+        Qualquer membro pode listar (não é ação gerencial). Só retorna
+        convites ainda pendentes — exclui os já aceitos, revogados ou
+        expirados.
+      parameters:
+        - $ref: "#/components/parameters/OrganizationId"
+      responses:
+        "200":
+          description: Lista de convites pendentes.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/ConvitePendente" }
+        "401": { $ref: "#/components/responses/NaoAutenticado" }
+        "403": { $ref: "#/components/responses/ForaDaOrganizacao" }
+    post:
+      tags: [Convites (gestão)]
+      summary: Cria um convite para uma organização
+      description: >
+        Owner e admin podem convidar; só o owner pode convidar concedendo
+        o papel `admin`. Se o e-mail já pertence à organização, é
+        rejeitado. Criar um novo convite para um e-mail que já tinha um
+        convite pendente invalida automaticamente o anterior. Se o plano
+        da organização tem limite de membros e ele já foi atingido
+        (contando membros atuais, não convites pendentes), a criação é
+        recusada.
+      parameters:
+        - $ref: "#/components/parameters/OrganizationId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email]
+              properties:
+                email: { type: string, format: email, maxLength: 160 }
+                role: { type: string, enum: [admin, member], default: member }
+      responses:
+        "201":
+          description: Convite criado com sucesso.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ConviteCriado" }
+        "400": { $ref: "#/components/responses/ErroValidacao" }
+        "401": { $ref: "#/components/responses/NaoAutenticado" }
+        "403":
+          description: >
+            Sem permissão (member tentando convidar, ou admin tentando
+            conceder o papel admin).
+          content:
+            application/json: { schema: { $ref: "#/components/schemas/Erro" } }
+        "409":
+          description: Esse e-mail já pertence à organização.
+          content:
+            application/json: { schema: { $ref: "#/components/schemas/Erro" } }
+
+  /organizations/{organizationId}/invites/{inviteId}:
+    delete:
+      tags: [Convites (gestão)]
+      summary: Revoga um convite pendente
+      description: Owner e admin podem revogar. Depois de revogado, o token do convite não pode mais ser usado.
+      parameters:
+        - $ref: "#/components/parameters/OrganizationId"
+        - name: inviteId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "204": { description: Convite revogado com sucesso. }
+        "401": { $ref: "#/components/responses/NaoAutenticado" }
+        "403":
+          description: Member não pode revogar convites.
+          content:
+            application/json: { schema: { $ref: "#/components/schemas/Erro" } }
+        "404":
+          description: Convite inexistente ou já processado (aceito/revogado).
+          content:
+            application/json: { schema: { $ref: "#/components/schemas/Erro" } }
+
+  # ───────────────────────────── Projetos ─────────────────────────────
+  /organizations/{organizationId}/projects:
+    get:
+      tags: [Projetos]
+      summary: Lista os projetos (quadros) da organização, paginado
+      description: >
+        Qualquer membro pode listar. Resposta paginada — o frontend
+        oficial busca automaticamente todas as páginas e apresenta uma
+        lista única, sem paginação visível ao usuário.
+      parameters:
+        - $ref: "#/components/parameters/OrganizationId"
+        - name: pagina
+          in: query
+          schema: { type: integer, minimum: 1, default: 1 }
+        - name: limite
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+      responses:
+        "200":
+          description: Página de projetos.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  dados:
+                    type: array
+                    items: { $ref: "#/components/schemas/Projeto" }
+                  meta: { $ref: "#/components/schemas/PaginacaoMeta" }
+        "401": { $ref: "#/components/responses/NaoAutenticado" }
+        "403": { $ref: "#/components/responses/ForaDaOrganizacao" }
+    post:
+      tags: [Projetos]
+      summary: Cria um novo projeto (quadro)
+      description: >
+        Owner e admin podem criar. Cria automaticamente as 3 colunas
+        padrão ("A Fazer", "Em Andamento", "Concluído"). Sujeito ao
+        limite de projetos do plano da organização — o plano Free tem um
+        teto; o plano Pro não tem limite.
+      parameters:
+        - $ref: "#/components/parameters/OrganizationId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name: { type: string, minLength: 1 }
+                type: { type: string, description: "Tipo de projeto, informativo." }
+      responses:
+        "201":
+          description: Projeto criado, com as 3 colunas padrão.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Projeto" }
+        "400": { $ref: "#/components/responses/ErroValidacao" }
+        "401": { $ref: "#/components/responses/NaoAutenticado" }
+        "403":
+          description: >
+            Sem permissão (member tentando criar), OU a organização
+            atingiu o limite de projetos do plano atual.
+          content:
+            application/json: { schema: { $ref: "#/components/schemas/Erro" } }
+
+  /organizations/{organizationId}/projects/{id}:
+    get:
+      tags: [Projetos]
+      summary: Busca um projeto específico
+      parameters:
+        - $ref: "#/components/parameters/OrganizationId"
+        - $ref: "#/components/parameters/ProjectPathId"
+      responses:
+        "200":
+          description: Projeto encontrado.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Projeto" }
+        "401": { $ref: "#/components/responses/NaoAutenticado" }
+        "404":
+          description: Projeto não encontrado (inexistente, ou de outra organização).
+          content:
+            application/json: { schema: { $ref: "#/components/schemas/Erro" } }
+    patch:
+      tags: [Projetos]
+      summary: Renomeia um projeto
+      description: Owner e admin podem renomear.
+      parameters:
+        - $ref: "#/components/parameters/OrganizationId"
+        - $ref: "#/components/parameters/ProjectPathId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name: { type: string, minLength: 1 }
+      responses:
+        "204": { description: Projeto renomeado com sucesso. }
+        "400": { $ref: "#/components/responses/ErroValidacao" }
+        "401": { $ref: "#/components/responses/NaoAutenticado" }
+        "403":
+          description: Member não pode renomear projetos.
+          content:
+            application/json: { schema: { $ref: "#/components/schemas/Erro" } }
+        "404":
+          description: Projeto não encontrado.
+          content:
+            application/json: { schema: { $ref: "#/components/schemas/Erro" } }
+    delete:
+      tags: [Projetos]
+      summary: Exclui um projeto
+      description: >
+        Owner e admin podem excluir. Nunca é permitido excluir o último
+        quadro restante da organização — sempre precisa sobrar pelo menos
+        um.
+      parameters:
+        - $ref: "#/components/parameters/OrganizationId"
+        - $ref: "#/components/parameters/ProjectPathId"
+      responses:
+        "204": { description: Projeto excluído com sucesso. }
+        "401": { $ref: "#/components/responses/NaoAutenticado" }
+        "403":
+          description: Member não pode excluir projetos.
+          content:
+            application/json: { schema: { $ref: "#/components/schemas/Erro" } }
+        "404":
+          description: Projeto não encontrado.
+          content:
+            application/json: { schema: { $ref: "#/components/schemas/Erro" } }
+        "409":
+          description: É o último quadro da organização — não pode ser excluído.
+          content:
+            application/json: { schema: { $ref: "#/components/schemas/Erro" } }
+
+  # ───────────────────────────── Colunas ─────────────────────────────
+  /organizations/{organizationId}/projects/{projectId}/colunas:
+    get:
+      tags: [Colunas]
+      summary: Lista as colunas de um projeto
+      parameters:
+        - $ref: "#/components/parameters/OrganizationId"
+        - $ref: "#/components/parameters/ProjectId"
+      responses:
+        "200":
+          description: Lista de colunas, ordenadas por posição (ordem asc).
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Coluna" }
+        "401": { $ref: "#/components/responses/NaoAutenticado" }
+        "404":
+          description: Projeto não encontrado (inexistente, ou de outra organização).
+          content:
+            application/json: { schema: { $ref: "#/components/schemas/Erro" } }
+    post:
+      tags: [Colunas]
+      summary: Cria uma coluna nova no final do projeto
+      description: Owner e admin podem criar. A posição (`ordem`) é calculada automaticamente como a próxima disponível no projeto.
+      parameters:
+        - $ref: "#/components/parameters/OrganizationId"
+        - $ref: "#/components/parameters/ProjectId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [nome]
+              properties:
+                nome: { type: string, minLength: 1, maxLength: 80 }
+      responses:
+        "201":
+          description: Coluna criada.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Coluna" }
+        "400": { $ref: "#/components/responses/ErroValidacao" }
+        "401": { $ref: "#/components/responses/NaoAutenticado" }
+        "403":
+          description: Member não pode criar colunas.
+          content:
+            application/json: { schema: { $ref: "#/components/schemas/Erro" } }
+        "404":
+          description: >
+            Projeto não encontrado — inclusive se o projeto for excluído
+            concorrentemente durante a criação (condição de corrida
+            tratada de forma explícita).
+          content:
+            application/json: { schema: { $ref: "#/components/schemas/Erro" } }
+
+  /organizations/{organizationId}/projects/{projectId}/colunas/{id}:
+    patch:
+      tags: [Colunas]
+      summary: Renomeia uma coluna
+      description: Owner e admin podem renomear.
+      parameters:
+        - $ref: "#/components/parameters/OrganizationId"
+        - $ref: "#/components/parameters/ProjectId"
+        - $ref: "#/components/parameters/ColunaId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [nome]
+              properties:
+                nome: { type: string, minLength: 1, maxLength: 80 }
+      responses:
+        "200":
+          description: Coluna renomeada.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  mensagem: { type: string, example: "Coluna atualizada" }
+        "400": { $ref: "#/components/responses/ErroValidacao" }
+        "401": { $ref: "#/components/responses/NaoAutenticado" }
+        "403":
+          description: Member não pode renomear colunas.
+          content:
+            application/json: { schema: { $ref: "#/components/schemas/Erro" } }
+        "404":
+          description: Coluna não encontrada (inexistente, ou de outro projeto/organização).
+          content:
+            application/json: { schema: { $ref: "#/components/schemas/Erro" } }
+    delete:
+      tags: [Colunas]
+      summary: Exclui uma coluna
+      description: >
+        Owner e admin podem excluir. A exclusão da coluna apaga em
+        cascata todos os cards que estavam nela.
+      parameters:
+        - $ref: "#/components/parameters/OrganizationId"
+        - $ref: "#/components/parameters/ProjectId"
+        - $ref: "#/components/parameters/ColunaId"
+      responses:
+        "200":
+          description: Coluna excluída.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  mensagem: { type: string }
+        "401": { $ref: "#/components/responses/NaoAutenticado" }
+        "403":
+          description: Member não pode excluir colunas.
+          content:
+            application/json: { schema: { $ref: "#/components/schemas/Erro" } }
+        "404":
+          description: Coluna não encontrada.
+          content:
+            application/json: { schema: { $ref: "#/components/schemas/Erro" } }
+
+  # ───────────────────────────── Cards ─────────────────────────────
+  /organizations/{organizationId}/projects/{projectId}/cards:
+    get:
+      tags: [Cards]
+      summary: Lista os cards do projeto
+      parameters:
+        - $ref: "#/components/parameters/OrganizationId"
+        - $ref: "#/components/parameters/ProjectId"
+      responses:
+        "200":
+          description: Lista de cards de todas as colunas do projeto, ordenados por coluna e posição.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Card" }
+        "401": { $ref: "#/components/responses/NaoAutenticado" }
+    post:
+      tags: [Cards]
+      summary: Cria um card numa coluna
+      description: >
+        Owner e admin podem criar. A posição (`ordem`) é calculada
+        automaticamente como a próxima disponível na coluna de destino.
+      parameters:
+        - $ref: "#/components/parameters/OrganizationId"
+        - $ref: "#/components/parameters/ProjectId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CardEntrada" }
+      responses:
+        "201":
+          description: Card criado.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Card" }
+        "400": { $ref: "#/components/responses/ErroValidacao" }
+        "401": { $ref: "#/components/responses/NaoAutenticado" }
+        "403":
+          description: Member não pode criar cards.
+          content:
+            application/json: { schema: { $ref: "#/components/schemas/Erro" } }
+        "404":
+          description: >
+            Coluna não encontrada (inexistente, de outro projeto, ou
+            excluída concorrentemente durante a criação).
+          content:
+            application/json: { schema: { $ref: "#/components/schemas/Erro" } }
+
+  /organizations/{organizationId}/projects/{projectId}/cards/{id}:
+    patch:
+      tags: [Cards]
+      summary: Edita um card (título, descrição, prioridade e/ou coluna)
+      description: >
+        Owner e admin podem editar. `colunaId` é **obrigatório** neste
+        endpoint mesmo quando a intenção é só editar título/descrição —
+        é o mesmo schema de validação usado na criação. Enviar um
+        `colunaId` diferente do atual move o card para essa coluna,
+        adicionando-o ao final dela (esse endpoint não reordena a
+        posição — para isso, ver `PATCH .../cards/{id}/mover`).
+      parameters:
+        - $ref: "#/components/parameters/OrganizationId"
+        - $ref: "#/components/parameters/ProjectId"
+        - $ref: "#/components/parameters/CardId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CardEntrada" }
+      responses:
+        "200":
+          description: Card atualizado.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Card" }
+        "400": { $ref: "#/components/responses/ErroValidacao" }
+        "401": { $ref: "#/components/responses/NaoAutenticado" }
+        "403":
+          description: Member não pode editar cards.
+          content:
+            application/json: { schema: { $ref: "#/components/schemas/Erro" } }
+        "404":
+          description: >
+            Card não encontrado (inexistente, ou de outro
+            projeto/organização), ou a coluna informada não existe.
+          content:
+            application/json: { schema: { $ref: "#/components/schemas/Erro" } }
+    delete:
+      tags: [Cards]
+      summary: Exclui um card
+      description: Owner e admin podem excluir.
+      parameters:
+        - $ref: "#/components/parameters/OrganizationId"
+        - $ref: "#/components/parameters/ProjectId"
+        - $ref: "#/components/parameters/CardId"
+      responses:
+        "204": { description: Card excluído com sucesso. }
+        "401": { $ref: "#/components/responses/NaoAutenticado" }
+        "403":
+          description: Member não pode excluir cards.
+          content:
+            application/json: { schema: { $ref: "#/components/schemas/Erro" } }
+        "404":
+          description: Card não encontrado.
+          content:
+            application/json: { schema: { $ref: "#/components/schemas/Erro" } }
+
+  /organizations/{organizationId}/projects/{projectId}/cards/{id}/mover:
+    patch:
+      tags: [Cards]
+      summary: Move um card para uma posição/coluna específica (drag-and-drop)
+      description: >
+        Qualquer membro (inclusive member) pode mover cards — não é uma
+        ação gerencial. `ordem` é a posição final desejada dentro da
+        coluna de destino (0-based, já contando o próprio card). Recalcula
+        a sequência inteira da(s) coluna(s) envolvida(s) de forma
+        atômica, protegida contra corrida (duas movimentações
+        concorrentes nunca geram posições duplicadas), inclusive contra
+        a coluna de destino ser excluída durante a operação.
+      parameters:
+        - $ref: "#/components/parameters/OrganizationId"
+        - $ref: "#/components/parameters/ProjectId"
+        - $ref: "#/components/parameters/CardId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [colunaId, ordem]
+              properties:
+                colunaId: { type: string, format: uuid, description: "Coluna de destino (pode ser a mesma coluna atual)." }
+                ordem: { type: integer, minimum: 0, description: "Posição final desejada dentro da coluna de destino." }
+      responses:
+        "200":
+          description: Card movido com sucesso.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  mensagem: { type: string }
+        "400": { $ref: "#/components/responses/ErroValidacao" }
+        "401": { $ref: "#/components/responses/NaoAutenticado" }
+        "404":
+          description: >
+            Card não encontrado, ou a coluna de origem/destino não
+            existe mais (inclusive se excluída durante a operação).
+          content:
+            application/json: { schema: { $ref: "#/components/schemas/Erro" } }
+
+  # ───────────────────────────── Perfil ─────────────────────────────
+  /perfil:
+    get:
+      tags: [Perfil]
+      summary: Retorna os dados da conta do usuário logado
+      responses:
+        "200":
+          description: Dados do perfil.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Perfil" }
+        "401": { $ref: "#/components/responses/NaoAutenticado" }
+    patch:
+      tags: [Perfil]
+      summary: Atualiza o nome do usuário logado
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name: { type: string, minLength: 1, maxLength: 100 }
+      responses:
+        "200":
+          description: Nome atualizado.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Perfil" }
+        "400": { $ref: "#/components/responses/ErroValidacao" }
+        "401": { $ref: "#/components/responses/NaoAutenticado" }
+
+  /perfil/senha:
+    patch:
+      tags: [Perfil]
+      summary: Altera a senha do usuário logado
+      description: >
+        Exige a senha atual correta. Ao alterar com sucesso, invalida
+        todas as sessões antigas (revogação via `tokenVersion`) — a
+        própria requisição atual continua válida, mas qualquer outro JWT
+        emitido antes passa a ser rejeitado.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [senhaAtual, novaSenha]
+              properties:
+                senhaAtual: { type: string }
+                novaSenha: { type: string, description: "Mesma política de senha forte do registro." }
+      responses:
+        "200":
+          description: Senha alterada com sucesso.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  mensagem: { type: string }
+        "400": { $ref: "#/components/responses/ErroValidacao" }
+        "401":
+          description: Sem autenticação, ou senha atual incorreta.
+          content:
+            application/json: { schema: { $ref: "#/components/schemas/Erro" } }
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: >
+        Token JWT obtido em `/login`, `/registro` ou no aceite de
+        convite. Enviado como `Authorization: Bearer <token>`. É
+        assinado com HS256 e carrega um `tokenVersion`, que é conferido
+        a cada requisição contra o valor atual do usuário no banco — uma
+        troca de senha revoga instantaneamente qualquer token emitido
+        antes dela, sem esperar a expiração natural (7 dias).
+
+  parameters:
+    OrganizationId:
+      name: organizationId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    ProjectId:
+      name: projectId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    ProjectPathId:
+      name: id
+      in: path
+      required: true
+      description: Id do projeto.
+      schema: { type: string, format: uuid }
+    ColunaId:
+      name: id
+      in: path
+      required: true
+      description: Id da coluna.
+      schema: { type: string, format: uuid }
+    CardId:
+      name: id
+      in: path
+      required: true
+      description: Id do card.
+      schema: { type: string, format: uuid }
+    UserId:
+      name: userId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    TokenConvite:
+      name: token
+      in: path
+      required: true
+      description: Token bruto do convite (recebido no link do e-mail).
+      schema: { type: string }
+
+  responses:
+    NaoAutenticado:
+      description: Sem token, token inválido, ou token de uma sessão já revogada.
+      content:
+        application/json: { schema: { $ref: "#/components/schemas/Erro" } }
+    ForaDaOrganizacao:
+      description: O usuário autenticado não pertence a esta organização.
+      content:
+        application/json: { schema: { $ref: "#/components/schemas/Erro" } }
+    ErroValidacao:
+      description: Corpo da requisição não passou na validação (Zod).
+      content:
+        application/json: { schema: { $ref: "#/components/schemas/Erro" } }
+
+  schemas:
+    Erro:
+      type: object
+      description: Envelope padrão de erro de toda a API.
+      properties:
+        erro:
+          type: string
+          example: "Mensagem descrevendo o que deu errado."
+
+    AuthResposta:
+      type: object
+      properties:
+        token: { type: string, description: "JWT a ser enviado em Authorization: Bearer <token>." }
+        nome: { type: string }
+        organizationId: { type: string, format: uuid }
+
+    OrganizacaoResumo:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        slug: { type: string }
+        plan: { type: string, enum: [free, pro] }
+        role: { type: string, enum: [owner, admin, member], description: "Papel do usuário logado nesta organização." }
+        joinedAt: { type: string, format: date-time }
+
+    Membro:
+      type: object
+      properties:
+        userId: { type: string, format: uuid }
+        nome: { type: string }
+        email: { type: string, format: email }
+        role: { type: string, enum: [owner, admin, member] }
+        joinedAt: { type: string, format: date-time }
+
+    ConviteDadosPublicos:
+      type: object
+      properties:
+        email: { type: string, format: email }
+        role: { type: string, enum: [admin, member] }
+        nomeOrganizacao: { type: string }
+        nomeConvidante: { type: string }
+        contaExistente: { type: boolean, description: "Se já existe uma conta cadastrada com este e-mail." }
+
+    ConvitePendente:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        email: { type: string, format: email }
+        role: { type: string, enum: [admin, member] }
+        expiresAt: { type: string, format: date-time }
+        invitedBy:
+          type: object
+          properties:
+            name: { type: string }
+
+    ConviteCriado:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        email: { type: string, format: email }
+        role: { type: string, enum: [admin, member] }
+
+    PaginacaoMeta:
+      type: object
+      properties:
+        total: { type: integer, description: "Total de itens em todas as páginas." }
+        pagina: { type: integer }
+        limite: { type: integer }
+        totalPaginas: { type: integer }
+
+    Projeto:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        organizationId: { type: string, format: uuid }
+        name: { type: string }
+        type: { type: string }
+        createdAt: { type: string, format: date-time }
+
+    Coluna:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        organizationId: { type: string, format: uuid }
+        projectId: { type: string, format: uuid }
+        nome: { type: string }
+        ordem: { type: integer, description: "Posição dentro do projeto, começando em 0." }
+
+    CardEntrada:
+      type: object
+      required: [titulo, colunaId]
+      properties:
+        titulo: { type: string, minLength: 1, maxLength: 150 }
+        descricao: { type: string, maxLength: 2000, nullable: true }
+        prioridade: { type: string, enum: [baixa, media, alta], default: media }
+        colunaId: { type: string, format: uuid }
+        prazo: { type: string, maxLength: 30, nullable: true, description: "Texto livre (não é validado como data)." }
+
+    Card:
+      allOf:
+        - $ref: "#/components/schemas/CardEntrada"
+        - type: object
+          properties:
+            id: { type: string, format: uuid }
+            organizationId: { type: string, format: uuid }
+            ordem: { type: integer, description: "Posição dentro da coluna, começando em 0." }
+            createdAt: { type: string, format: date-time }
+
+    Perfil:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        email: { type: string, format: email }
+        createdAt: { type: string, format: date-time }
