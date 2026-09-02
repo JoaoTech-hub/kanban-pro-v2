@@ -55,14 +55,6 @@ function countByOrganization(organizationId, client = prisma) {
   return client.organizationMember.count({ where: { organizationId } });
 }
 
-async function updateRole(organizationId, userId, role) {
-  const resultado = await prisma.organizationMember.updateMany({
-    where: { organizationId, userId },
-    data: { role },
-  });
-  return resultado.count > 0;
-}
-
 // Atualização condicional: só efetiva a troca de role se, no momento exato
 // desta operação, a role atual ainda for `roleEsperado`. Mesmo padrão atômico
 // já usado em organizationInvite.repository.js (markAsAcceptedIfValid) —
@@ -106,7 +98,6 @@ module.exports = {
   findAllByUser,
   findManyByOrganization,
   countByOrganization,
-  updateRole,
   updateRoleSeAtual,
   remove,
   removeSeRole,
