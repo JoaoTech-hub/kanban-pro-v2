@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
+import Brandmark from "./UI/Brandmark";
 
 import ProjectSwitcher from "./ProjectSwitcher";
 import OrganizationSwitcher from "./OrganizationSwitcher";
@@ -56,7 +57,7 @@ export default function Sidebar() {
       <Backdrop $visivel={aberta} onClick={() => setAberta(false)} />
 
       <SidebarContainer $aberta={aberta}>
-        <Logo>🚀 Kanban Pro</Logo>
+        <Logo><Brandmark /> Kanban Pro</Logo>
 
         <OrganizationSwitcher />
         <ProjectSwitcher />

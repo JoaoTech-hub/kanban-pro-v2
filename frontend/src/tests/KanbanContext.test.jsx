@@ -1,5 +1,5 @@
 import { describe, test, expect, vi, beforeEach } from "vitest";
-import { render, screen, waitFor, fireEvent } from "@testing-library/react";
+import { render, screen, waitFor, fireEvent, act } from "@testing-library/react";
 import { useState } from "react";
 import api from "../services/api";
 import { AuthProvider, useAuth } from "../context/AuthContext";
@@ -194,7 +194,13 @@ describe("KanbanContext — dados persistem entre navegações (sem refetch desn
       expect(chamadas).toBe(1);
     });
 
-        resolverProjetos({ data: [{ id: "proj-1", name: "Meu Quadro" }] });
+    // Resolve dentro de act() e espera o React processar a atualização de
+    // estado que isso dispara no ProjectProvider — sem isso, o teste
+    // termina antes do efeito assentar e o React acusa "update not
+    // wrapped in act(...)", mesmo o teste em si passando.
+    await act(async () => {
+      resolverProjetos({ data: [{ id: "proj-1", name: "Meu Quadro" }] });
+    });
   });
 });
 

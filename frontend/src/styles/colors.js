@@ -1,27 +1,23 @@
 export const colors = {
-
-    primary: "#2563eb",
-
-    secondary: "#3b82f6",
-
-    success: "#22c55e",
-
-    warning: "#eab308",
-
-    danger: "#ef4444",
-
+    primary: "#0E6E66",
+    secondary: "#D97757",
+    success: "#3F8F4F",
+    warning: "#B4791F",
+    danger: "#C0392B",
     white: "#ffffff",
-
-    background: "#f5f7fb",
-
+    background: "#F6F5F1",
     card: "#ffffff",
+    column: "#EEECE4",
+    border: "#E0DDD3",
+    text: "#232420",
+    shadow: "rgba(20,20,10,.07)"
+};
 
-    column: "#eef2ff",
-
-    border: "#dbe4ff",
-
-    text: "#1f2937",
-
-    shadow: "rgba(0,0,0,.08)"
-
+// Escala de raios — usada para diferenciar botão / input / card
+export const radius = {
+    sm: "6px",
+    md: "8px",
+    lg: "14px",
+    xl: "18px",
+    pill: "999px",
 };

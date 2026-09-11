@@ -17,7 +17,7 @@ export default function Stats({ cards, colunas }) {
   return (
     <StatsContainer>
       <StatCard>
-        <FiClipboard size={24} />
+        <FiClipboard size={16} />
         <h3>{total}</h3>
         <span>Total</span>
       </StatCard>
@@ -27,7 +27,7 @@ export default function Stats({ cards, colunas }) {
         const quantidade = cards.filter((c) => c.coluna_id === coluna.id).length;
         return (
           <StatCard key={coluna.id}>
-            <Icone size={24} />
+            <Icone size={16} />
             <h3>{quantidade}</h3>
             <span>{coluna.titulo}</span>
           </StatCard>

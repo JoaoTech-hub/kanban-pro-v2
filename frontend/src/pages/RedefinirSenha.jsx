@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import api from "../services/api";
+import Brandmark from "../components/UI/Brandmark";
 import {
   PageWrapper,
   Card,
@@ -42,23 +43,18 @@ export default function RedefinirSenha() {
       await api.post("/redefinir-senha", { token, novaSenha });
       setConcluido(true);
     } catch (err) {
-      // O backend retorna 401 com "Token inválido ou expirado" quando o token
-      // já foi usado, expirou (1h) ou nunca existiu — a mensagem já é
-      // amigável o suficiente para ser exibida diretamente.
       setErro(err.response?.data?.erro || "Não foi possível redefinir sua senha. Tente novamente.");
     } finally {
       setCarregando(false);
     }
   }
 
-  // Sem token na URL: o usuário chegou aqui sem passar pelo link do e-mail
-  // (ex.: acesso direto a /redefinir-senha). Não faz sentido mostrar o formulário.
   if (!token) {
     return (
       <PageWrapper>
         <Card>
           <div>
-            <Title>🚀 Kanban Pro</Title>
+            <Title><Brandmark /> Kanban Pro</Title>
             <Subtitle>Link inválido</Subtitle>
           </div>
           <ErrorMsg role="alert">
@@ -78,7 +74,7 @@ export default function RedefinirSenha() {
     <PageWrapper>
       <Card>
         <div>
-          <Title>🚀 Kanban Pro</Title>
+          <Title><Brandmark /> Kanban Pro</Title>
           <Subtitle>
             {concluido ? "Senha redefinida" : "Escolha sua nova senha"}
           </Subtitle>

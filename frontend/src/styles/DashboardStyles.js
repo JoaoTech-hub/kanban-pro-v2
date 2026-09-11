@@ -3,10 +3,13 @@ import styled, { keyframes, css } from "styled-components";
 // overflow-x: auto impede quebra de layout quando há muitas colunas
 export const ColumnsContainer = styled.div`
   display: flex;
+  align-items: flex-start; /* cada coluna cresce pelo próprio conteúdo, não pela mais alta */
   gap: 20px;
   margin-top: 25px;
   overflow-x: auto;
   padding-bottom: 16px; /* espaço para scrollbar */
+  cursor: ${({ $arrastando }) => ($arrastando ? "grabbing" : "default")};
+  user-select: ${({ $arrastando }) => ($arrastando ? "none" : "auto")};
 
   /* Scrollbar sutil */
   &::-webkit-scrollbar {
@@ -45,18 +48,23 @@ export const EmptyColumnMessage = styled.div`
 `;
 
 export const ColumnContainer = styled.div`
-  flex: 0 0 300px; /* largura fixa para permitir scroll horizontal */
+  flex: 0 0 272px; /* largura fixa para permitir scroll horizontal */
+  width: 272px;
+  min-width: 0;
   background: ${({ theme, $isDraggingOver }) =>
     $isDraggingOver ? theme.border : theme.column};
-  border-radius: 15px;
-  padding: 20px;
-  min-height: 500px;
+  border-radius: 12px;
+  padding: 8px;
+  padding-bottom: 24px; /* espaço extra pra soltar um card no fim da lista */
+  min-height: 40px; /* só o suficiente pra área de drop funcionar quando vazia */
   box-shadow: 0 4px 12px ${({ theme }) => theme.shadow};
   transition: background 0.15s;
 
   @media (max-width: 480px) {
     flex-basis: 82vw;
-    padding: 16px;
+    width: 82vw;
+    padding: 8px;
+    padding-bottom: 24px;
   }
 `;
 
@@ -64,20 +72,21 @@ export const CardContainer = styled.div`
   position: relative;
   background: ${({ theme }) => theme.card};
   color: ${({ theme }) => theme.text};
-  padding: 15px;
-  margin-top: 12px;
-  border-radius: 12px;
-  transition: transform 0.15s, box-shadow 0.15s;
+  padding: 8px 10px;
+  margin-top: 8px;
+  border-radius: 8px;
+  transition: box-shadow 0.15s;
   cursor: pointer;
-  box-shadow: 0 2px 6px ${({ theme }) => theme.shadow};
+  box-shadow: 0 1px 2px ${({ theme }) => theme.shadow};
+  overflow-wrap: anywhere;
+  word-break: break-word;
 
   &:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 6px 16px ${({ theme }) => theme.shadow};
+    box-shadow: 0 2px 6px ${({ theme }) => theme.shadow};
   }
 
   &:first-child {
-    margin-top: 12px;
+    margin-top: 0;
   }
 
   ${({ $completou }) =>
@@ -123,7 +132,7 @@ const subirParticula = keyframes`
 export const GlowOverlay = styled.div`
   position: absolute;
   inset: 0;
-  border-radius: 12px;
+  border-radius: 14px;
   pointer-events: none;
   animation: ${apareceGlow} 700ms ease;
 `;

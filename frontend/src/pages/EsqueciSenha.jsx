@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import api from "../services/api";
+import Brandmark from "../components/UI/Brandmark";
 import {
   PageWrapper,
   Card,
@@ -27,9 +28,6 @@ export default function EsqueciSenha() {
 
     try {
       await api.post("/esqueci-senha", { email });
-      // O backend sempre responde com a mesma mensagem genérica, exista ou não
-      // o e-mail na base — isso evita enumeração de usuários. O frontend segue
-      // a mesma lógica: nunca revela se o envio de fato aconteceu.
       setEnviado(true);
     } catch (err) {
       setErro(err.response?.data?.erro || "Não foi possível enviar o e-mail. Tente novamente.");
@@ -42,7 +40,7 @@ export default function EsqueciSenha() {
     <PageWrapper>
       <Card>
         <div>
-          <Title>🚀 Kanban Pro</Title>
+          <Title><Brandmark /> Kanban Pro</Title>
           <Subtitle>
             {enviado
               ? "Verifique sua caixa de entrada"

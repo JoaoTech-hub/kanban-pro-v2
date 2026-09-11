@@ -1,5 +1,5 @@
 import { describe, test, expect, vi, beforeEach } from "vitest";
-import { render, screen, waitFor, fireEvent } from "@testing-library/react";
+import { render, screen, waitFor, fireEvent, act } from "@testing-library/react";
 import api from "../services/api";
 import App from "../App";
 import { MemoryRouter } from "react-router-dom";
@@ -95,7 +95,13 @@ describe("Navegação Dashboard <-> outras páginas — sem flash de loading nem
     for (const texto of sequencia) {
       const link = await screen.findByText(texto);
       fireEvent.click(link);
-      await new Promise((r) => setTimeout(r, 30));
+      // A troca de rota carrega a página via React.lazy — a resolução do
+      // Suspense acontece nesse intervalo, então a espera precisa estar
+      // dentro de act() (senão o React acusa "suspended resource finished
+      // loading... not wrapped in act(...)", mesmo o teste passando).
+      await act(async () => {
+        await new Promise((r) => setTimeout(r, 30));
+      });
     }
 
     const chamadasProjectsDepois = api.get.mock.calls.filter(

@@ -4,6 +4,7 @@ import api from "../services/api";
 import { useAuth } from "../context/AuthContext";
 import { useToast } from "../context/ToastContext";
 import { useOrganizacoes } from "../hooks/useOrganizacoes";
+import Brandmark from "../components/UI/Brandmark";
 import {
   PageWrapper,
   Card,
@@ -26,8 +27,6 @@ export default function Login() {
   const navigate = useNavigate();
   const location = useLocation();
 
-  // Presente quando o usuário chegou aqui a partir de /convites/:token
-  // (Feature 6.8, fluxo "conta já existente" — ver AceitarConvite.jsx).
   const conviteToken = location.state?.conviteToken;
 
   async function entrar(e) {
@@ -39,9 +38,6 @@ export default function Login() {
       const resposta = await api.post("/login", { email, senha });
 
       if (conviteToken) {
-        // Loga sem redirecionar ainda: primeiro precisa aceitar o convite
-        // e trocar para a organização recém-aceita, senão o usuário cairia
-        // no dashboard da organização antiga.
         login(resposta.data.token, resposta.data.nome, resposta.data.organizationId, {
           redirecionar: false,
         });
@@ -49,15 +45,9 @@ export default function Login() {
         try {
           const aceite = await api.post(`/convites/${conviteToken}/aceitar-existente`);
           trocarOrganizacao(aceite.data.organizationId);
-          // Mesma razão do fluxo de conta nova: a organização recém-aceita
-          // não existe na lista em memória do OrganizationsContext até
-          // recarregar — sem isso, o seletor/Equipe não a veriam sem F5.
           await carregarOrganizacoes();
           showToast("Convite aceito com sucesso!", "sucesso");
         } catch (err) {
-          // O login em si já deu certo — só o aceite do convite falhou
-          // (ex.: token expirou entre a tela de convite e o login). O
-          // usuário ainda consegue acessar a conta normalmente.
           showToast(
             err.response?.data?.erro || "Não foi possível aceitar o convite.",
             "erro"
@@ -80,7 +70,7 @@ export default function Login() {
     <PageWrapper>
       <Card>
         <div>
-          <Title>🚀 Kanban Pro</Title>
+          <Title><Brandmark /> Kanban Pro</Title>
           <Subtitle>
             {conviteToken ? "Entre para aceitar o convite" : "Entre para gerenciar suas tarefas"}
           </Subtitle>

@@ -14,7 +14,7 @@ box-sizing:border-box;
 
 body{
 
-font-family:Inter,Arial,sans-serif;
+font-family:"Manrope",system-ui,sans-serif;
 
 background:${({theme})=>theme.background};
 

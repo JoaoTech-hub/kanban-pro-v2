@@ -3,6 +3,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import api from "../services/api";
 import { useAuth } from "../context/AuthContext";
 import { useOrganizacoes } from "../hooks/useOrganizacoes";
+import Brandmark from "../components/UI/Brandmark";
 import {
   PageWrapper,
   Card,
@@ -55,10 +56,6 @@ export default function AceitarConvite() {
     };
   }, [token]);
 
-  // Conta já existe: aceitar exige estar logado com o e-mail convidado.
-  // Manda pro login levando o token do convite — o Login.jsx, depois de
-  // autenticar, aceita o convite e troca pra organização recém-aceita
-  // antes de ir pro dashboard.
   function irParaLogin() {
     navigate("/", { state: { conviteToken: token, conviteEmail: convite?.email } });
   }
@@ -80,10 +77,6 @@ export default function AceitarConvite() {
     try {
       const resposta = await api.post(`/convites/${token}/aceitar-novo`, { nome, senha });
 
-      // Ordem importa: login() precisa persistir o token ANTES de
-      // carregarOrganizacoes(), senão essa chamada sairia sem Authorization.
-      // redirecionar:false segura a navegação até a lista estar atualizada
-      // com a organização recém-aceita (evita ir pro dashboard sem ela).
       login(resposta.data.token, resposta.data.nome, resposta.data.organizationId, {
         redirecionar: false,
       });
@@ -102,7 +95,7 @@ export default function AceitarConvite() {
     return (
       <PageWrapper>
         <Card>
-          <Title>🚀 Kanban Pro</Title>
+          <Title><Brandmark /> Kanban Pro</Title>
           <Subtitle>Carregando convite...</Subtitle>
         </Card>
       </PageWrapper>
@@ -114,7 +107,7 @@ export default function AceitarConvite() {
       <PageWrapper>
         <Card>
           <div>
-            <Title>🚀 Kanban Pro</Title>
+            <Title><Brandmark /> Kanban Pro</Title>
             <Subtitle>Convite inválido</Subtitle>
           </div>
           <ErrorMsg role="alert">{erroConvite}</ErrorMsg>
@@ -132,7 +125,7 @@ export default function AceitarConvite() {
     <PageWrapper>
       <Card>
         <div>
-          <Title>🚀 Kanban Pro</Title>
+          <Title><Brandmark /> Kanban Pro</Title>
           <Subtitle>
             {convite.nomeConvidante} te convidou para {convite.nomeOrganizacao}
           </Subtitle>

@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import api from "../services/api";
 import { useAuth } from "../context/AuthContext";
+import Brandmark from "../components/UI/Brandmark";
 import {
   PageWrapper,
   Card,
@@ -42,9 +43,6 @@ export default function Registro() {
 
     setCarregando(true);
     try {
-      // O backend já cria a organização e o vínculo de "owner" automaticamente,
-      // e devolve token + organizationId direto no registro — não precisa
-      // de uma segunda chamada de login separada, como era antes.
       const resposta = await api.post("/registro", { nome, email, senha });
       login(resposta.data.token, resposta.data.nome, resposta.data.organizationId);
     } catch (err) {
@@ -58,7 +56,7 @@ export default function Registro() {
     <PageWrapper>
       <Card>
         <div>
-          <Title>🚀 Kanban Pro</Title>
+          <Title><Brandmark /> Kanban Pro</Title>
           <Subtitle>Crie sua conta para começar a organizar suas tarefas</Subtitle>
         </div>
 

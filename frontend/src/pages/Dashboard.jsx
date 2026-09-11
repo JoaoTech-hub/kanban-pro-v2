@@ -4,6 +4,7 @@ import { DragDropContext } from "@hello-pangea/dnd";
 import { useAuth } from "../context/AuthContext";
 import { useProject } from "../context/ProjectContext";
 import { useKanban, normalizarCard } from "../context/KanbanContext";
+import useDragScroll from "../hooks/useDragScroll";
 
 import PageLayout from "../components/PageLayout";
 import Header from "../components/Header";
@@ -38,6 +39,7 @@ export default function Dashboard() {
   const [modalAberto, setModalAberto] = useState(false);
   const [pesquisa, setPesquisa] = useState("");
   const [cardAnimandoId, setCardAnimandoId] = useState(null);
+  const { ref: colunasRef, emArrasto, handlers: dragScrollHandlers } = useDragScroll();
 
   async function onDragEnd(resultado) {
     if (!resultado.destination) return;
@@ -160,7 +162,7 @@ export default function Dashboard() {
             durationDampening: { stopDampeningAt: 1200, accelerateAt: 360 },
           }}
         >
-          <ColumnsContainer>
+          <ColumnsContainer ref={colunasRef} $arrastando={emArrasto} {...dragScrollHandlers}>
             {colunas.map((coluna) => (
               <Column
                 key={coluna.id}

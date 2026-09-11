@@ -12,12 +12,12 @@ export const lightTheme = {
 };
 
 export const darkTheme = {
-  background: "#111827",
-  card: "#1f2937",
-  column: "#273449",
-  text: "#ffffff",
-  primary: "#60a5fa",
-  danger: "#f87171",
-  border: "#334155",
+  background: "#15201D",
+  card: "#1C2825",
+  column: "#22302C",
+  text: "#F2F0E9",
+  primary: "#4FB3A9",
+  danger: "#E0685A",
+  border: "#33433E",
   shadow: "rgba(0,0,0,.4)",
 };
