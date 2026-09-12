@@ -58,4 +58,13 @@ async function renomear(req, res, next) {
   }
 }
 
-module.exports = { criar, listar, buscarPorId, remover, renomear };
+async function atualizarFundo(req, res, next) {
+  try {
+    await projectService.atualizarFundo(req.params.id, req.organization.id, req.body.background);
+    res.status(204).send();
+  } catch (err) {
+    next(err);
+  }
+}
+
+module.exports = { criar, listar, buscarPorId, remover, renomear, atualizarFundo };

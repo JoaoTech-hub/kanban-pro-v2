@@ -47,6 +47,14 @@ export const EmptyColumnMessage = styled.div`
   }
 `;
 
+export const BoardArea = styled.div`
+  background: ${({ $fundo }) => $fundo || "transparent"};
+  border-radius: 16px;
+  padding: ${({ $fundo }) => ($fundo ? "16px" : "0")};
+  margin: ${({ $fundo }) => ($fundo ? "-16px" : "0")};
+  transition: background 0.2s;
+`;
+
 export const ColumnContainer = styled.div`
   flex: 0 0 272px; /* largura fixa para permitir scroll horizontal */
   width: 272px;

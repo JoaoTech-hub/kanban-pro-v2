@@ -221,6 +221,25 @@ export function useProjetos(organizationId, aoOrganizacaoInvalida) {
     [organizationId, projetos, showToast]
   );
 
+  const atualizarFundoProjeto = useCallback(
+  async (id, background) => {
+    const anterior = projetos;
+    setProjetos((prev) => prev.map((p) => (p.id === id ? { ...p, background } : p)));
+    try {
+      await api.patch(`/organizations/${organizationId}/projects/${id}/background`, {
+        background,
+      });
+      return true;
+    } catch (err) {
+      console.error(err);
+      setProjetos(anterior);
+      showToast(err.response?.data?.erro || "Erro ao alterar o fundo do quadro.", "erro");
+      return false;
+    }
+  },
+  [organizationId, projetos, showToast]
+);
+
   return {
     projetos,
     projectId,
@@ -231,5 +250,6 @@ export function useProjetos(organizationId, aoOrganizacaoInvalida) {
     criarProjeto,
     excluirProjeto,
     renomearProjeto,
+    atualizarFundoProjeto,
   };
 }

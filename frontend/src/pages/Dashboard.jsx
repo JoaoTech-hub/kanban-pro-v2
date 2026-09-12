@@ -5,6 +5,7 @@ import { useAuth } from "../context/AuthContext";
 import { useProject } from "../context/ProjectContext";
 import { useKanban, normalizarCard } from "../context/KanbanContext";
 import useDragScroll from "../hooks/useDragScroll";
+import { cssDoFundo } from "../utils/boardBackgrounds";
 
 import PageLayout from "../components/PageLayout";
 import Header from "../components/Header";
@@ -13,11 +14,17 @@ import NovaColuna from "../components/NovaColuna";
 import CardFormModal from "../components/CardFormModal";
 import Stats from "../components/Stats";
 
-import { ColumnsContainer } from "../styles/DashboardStyles";
+import { ColumnsContainer, BoardArea } from "../styles/DashboardStyles";
 
 export default function Dashboard() {
   const { organizationId } = useAuth();
-  const { projectId, carregando: carregandoProjeto, erro: erroProjeto } = useProject();
+  const {
+    projectId,
+    projetos,
+    carregando: carregandoProjeto,
+    erro: erroProjeto,
+  } = useProject();
+  const projetoAtual = projetos.find((p) => p.id === projectId);
 
   // Vem do KanbanContext (persistente, montado uma vez acima do <Routes>)
   // — não busca nada aqui. O Provider já cuida do fetch, chaveado em
@@ -140,46 +147,53 @@ export default function Dashboard() {
 
   return (
     <PageLayout>
-      <Header pesquisa={pesquisa} setPesquisa={setPesquisa} abrirNovaTarefa={abrirNovaTarefa} />
+      <BoardArea $fundo={cssDoFundo(projetoAtual?.background)}>
+        <Header
+          pesquisa={pesquisa}
+          setPesquisa={setPesquisa}
+          abrirNovaTarefa={abrirNovaTarefa}
+          projeto={projetoAtual}
+        />
 
-      <Stats cards={cards} colunas={colunas} />
+        <Stats cards={cards} colunas={colunas} />
 
-      {erro && (
-        <p style={{ color: "#ef4444", marginTop: 20 }} role="alert">
-          {erro}
-        </p>
-      )}
+        {erro && (
+          <p style={{ color: "#ef4444", marginTop: 20 }} role="alert">
+            {erro}
+          </p>
+        )}
 
-      {semDadoAinda ? (
-        <p>Carregando seu quadro...</p>
-      ) : (
-        <DragDropContext
-          onDragEnd={onDragEnd}
-          autoScrollerOptions={{
-            startFromPercentage: 0.15,
-            maxScrollAtPercentage: 0.05,
-            maxPixelScroll: 28,
-            durationDampening: { stopDampeningAt: 1200, accelerateAt: 360 },
-          }}
-        >
-          <ColumnsContainer ref={colunasRef} $arrastando={emArrasto} {...dragScrollHandlers}>
-            {colunas.map((coluna) => (
-              <Column
-                key={coluna.id}
-                coluna={coluna}
-                cards={cardsPorColuna[coluna.id] ?? []}
-                onEditar={abrirEdicao}
-                onRenomear={renomearColuna}
-                onExcluir={excluirColuna}
-                cardAnimandoId={cardAnimandoId}
-                onAnimacaoFim={limparAnimacao}
-              />
-            ))}
+        {semDadoAinda ? (
+          <p>Carregando seu quadro...</p>
+        ) : (
+          <DragDropContext
+            onDragEnd={onDragEnd}
+            autoScrollerOptions={{
+              startFromPercentage: 0.15,
+              maxScrollAtPercentage: 0.05,
+              maxPixelScroll: 28,
+              durationDampening: { stopDampeningAt: 1200, accelerateAt: 360 },
+            }}
+          >
+            <ColumnsContainer ref={colunasRef} $arrastando={emArrasto} {...dragScrollHandlers}>
+              {colunas.map((coluna) => (
+                <Column
+                  key={coluna.id}
+                  coluna={coluna}
+                  cards={cardsPorColuna[coluna.id] ?? []}
+                  onEditar={abrirEdicao}
+                  onRenomear={renomearColuna}
+                  onExcluir={excluirColuna}
+                  cardAnimandoId={cardAnimandoId}
+                  onAnimacaoFim={limparAnimacao}
+                />
+              ))}
 
-            <NovaColuna onCriar={criarColuna} salvando={salvando} />
-          </ColumnsContainer>
-        </DragDropContext>
-      )}
+              <NovaColuna onCriar={criarColuna} salvando={salvando} />
+            </ColumnsContainer>
+          </DragDropContext>
+        )}
+      </BoardArea>
 
       {modalAberto && (
         <CardFormModal

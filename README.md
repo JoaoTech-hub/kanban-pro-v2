@@ -1,13 +1,13 @@
-# 🚀 Kanban Pro
+#  Kanban Pro
 
 [![CI](https://github.com/JoaoTech-hub/kanban-pro/actions/workflows/ci.yml/badge.svg)](https://github.com/JoaoTech-hub/kanban-pro/actions/workflows/ci.yml)
 [![Licença MIT](https://img.shields.io/badge/licença-MIT-blue.svg)](./LICENSE)
 
-Plataforma SaaS multi-tenant de gerenciamento de tarefas no estilo Kanban, com organizações, projetos, controle de acesso por papel (owner/admin/member), autenticação com revogação de sessão e recuperação de senha por e-mail. Construído como base reutilizável para futuros produtos SaaS.
+MVP de uma plataforma SaaS multi-tenant de gerenciamento de tarefas no estilo Kanban, com organizações, projetos, controle de acesso por papel (owner/admin/member), autenticação com revogação de sessão e recuperação de senha por e-mail. Construído como base reutilizável para futuros produtos SaaS.
 
  <img src="docs/gif/drag-and-drop.gif" alt="Drag and Drop" width="100%">
 
-## ✨ Funcionalidades
+##  Funcionalidades
 
 - Multi-tenancy: cada conta pertence a uma ou mais organizações, com dados totalmente isolados entre elas
 - Controle de acesso por papel (`owner`, `admin`, `member`) — apenas owner/admin gerenciam projetos, colunas e cards
@@ -24,74 +24,74 @@ Plataforma SaaS multi-tenant de gerenciamento de tarefas no estilo Kanban, com o
 - Layout responsivo, com menu lateral retrátil no mobile
 - Code-splitting por rota, com carregamento sob demanda das páginas
 
-## 📸 Screenshots
+##  Screenshots
 
-### 📊 Dashboard
+###  Dashboard
 
 ![Dashboard](docs/screenshots/dashboard.png)
 
 ---
 
-### 🌙 Dashboard (Tema Escuro)
+###  Dashboard (Tema Escuro)
 
 ![Dashboard Dark Mode](docs/screenshots/dashboard-dark-mode.png)
 
 ---
 
-### 📁 Gerenciamento de Colunas
+###  Gerenciamento de Colunas
 
 ![Colunas](docs/screenshots/columns.png)
 
 Cada organização pode ter um ou mais quadros (a entidade `Project`, no backend); esta tela gerencia as colunas do quadro ativo no momento. Para criar, trocar ou excluir quadros, use o seletor no topo do menu lateral.
 
-### ✅ Gerenciamento de Tarefas
+###  Gerenciamento de Tarefas
 
 ![Tarefas](docs/screenshots/tasks.png)
 
 ---
 
-### 👤 Perfil
+###  Perfil
 
 ![Perfil](docs/screenshots/profile.png)
 
 ---
 
-### ⚙️ Configurações
+###  Configurações
 
 ![Configurações](docs/screenshots/settings.png)
 
 ---
 
-### ➕ Nova Tarefa
+###  Nova Tarefa
 
 ![Nova Tarefa](docs/screenshots/create-task.png)
 
 ---
 
-### 🔐 Login
+###  Login
 
 ![Login](docs/screenshots/login.png)
 
 ---
 
-### 📝 Cadastro
+###  Cadastro
 
 ![Cadastro](docs/screenshots/register.png)
 
 ---
 
-### 📱 Versão Mobile
+###  Versão Mobile
 
 ![Mobile](docs/screenshots/mobile.png)
 
-## 🛠️ Stack
+##  Stack
 
 **Frontend:** React 19, Vite, React Router, styled-components, @hello-pangea/dnd, Axios
 **Backend:** Node.js, Express 5, PostgreSQL (Neon), Prisma ORM, JWT, bcrypt, Zod (validação), Helmet, express-rate-limit, Resend (e-mail transacional)
 **Testes:** Vitest + Testing Library (frontend), Jest + Supertest (backend)
 **CI:** GitHub Actions (lint, testes e build a cada push/PR)
 
-## 🏗️ Arquitetura
+##  Arquitetura
 
 ```text
 ┌──────────────┐        HTTPS/JSON        ┌──────────────────┐
@@ -130,7 +130,7 @@ middlewares (auth, requireOrganization, requireProject, error handler)
 
 No frontend, a lógica de comunicação com a API fica isolada em hooks customizados (`useKanban`, `useColunas`, `useProjetoAtivo`), mantendo os componentes de UI focados em apresentação. Estado global de autenticação (incluindo organização ativa) e tema fica em Context API (`AuthContext`, `ThemeContext`, `ToastContext`).
 
-## 🧠 Decisões técnicas
+##  Decisões técnicas
 
 - **Multi-tenancy via shared schema**: todas as organizações dividem o mesmo banco e as mesmas tabelas, isoladas por `organizationId`. Mais simples de operar com custo zero do que um banco por tenant, e é o padrão usado pela maioria dos SaaS neste estágio de maturidade.
 
@@ -148,7 +148,7 @@ No frontend, a lógica de comunicação com a API fica isolada em hooks customiz
 
 - **React.lazy por rota**: como o dashboard (com drag-and-drop) é a tela mais pesada, mas nem toda sessão a acessa imediatamente, dividir o bundle por rota reduz o JS carregado no primeiro acesso (tela de login).
 
-## 📁 Estrutura do projeto
+##  Estrutura do projeto
 
 Kanban-Pro/
 ├── backend/
@@ -178,7 +178,7 @@ Kanban-Pro/
 ├── styles/         # styled-components e tema
 └── tests/          # testes (Vitest + Testing Library)
 
-## ▶️ Como rodar localmente
+##  Como rodar localmente
 
 Pré-requisitos: Node.js 20+, uma conta gratuita no [Neon](https://neon.tech) (Postgres).
 
@@ -225,7 +225,7 @@ npm run dev
 
 O app sobe em `http://localhost:5173`. Crie uma conta pela tela de registro e comece a usar.
 
-## ✅ Rodando os testes
+##  Rodando os testes
 
 ```bash
 # backend (usa um banco Postgres de teste separado — veja .env.example)
@@ -235,7 +235,7 @@ cd backend && npm test
 cd frontend && npm test
 ```
 
-## 🔐 Variáveis de ambiente
+##  Variáveis de ambiente
 
 **backend/.env**
 | Variável | Obrigatória | Descrição |
@@ -255,7 +255,7 @@ cd frontend && npm test
 |---|---|
 | `VITE_API_URL` | URL base da API (ex: `http://localhost:3000` em desenvolvimento) |
 
-## 📧 Provedores de e-mail
+##  Provedores de e-mail
 
 O envio de e-mails (recuperação de senha, e futuros avisos) passa por uma camada de abstração em `backend/src/services/email/`. Nenhuma outra parte do backend conhece qual provedor está em uso — o único ponto de contato é `emailService.enviarResetSenha(...)`.
 
@@ -282,7 +282,7 @@ backend/src/services/email/
 
 Nenhum outro arquivo do projeto precisa mudar — nem os services que disparam e-mail, nem os controllers, nem os testes (que já simulam o `emailService` inteiro via `jest.mock`, sem depender de nenhum provedor real).
 
-## 🗺️ Roadmap
+##  Roadmap
 
 - [x] Multi-tenancy (organizações, projetos, isolamento de dados)
 - [x] Controle de acesso por papel (owner/admin/member)
@@ -294,7 +294,7 @@ Nenhum outro arquivo do projeto precisa mudar — nem os services que disparam e
 - [x] Paginação em listagens de projetos/colunas/cards
 - [ ] Documentação da API (OpenAPI/Swagger)
 
-## 📄 Licença
+##  Licença
 
 Este projeto está sob a licença MIT — veja o arquivo [LICENSE](./LICENSE) para mais detalhes.
 

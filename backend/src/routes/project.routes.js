@@ -1,7 +1,7 @@
 const { Router } = require("express");
 const { autenticar } = require("../middlewares/auth");
 const requireOrganization = require("../middlewares/requireOrganization");
-const { validar, projectSchema, projectRenameSchema } = require("../validators/schemas");
+const { validar, projectSchema, projectRenameSchema, projectBackgroundSchema } = require("../validators/schemas");
 const projectController = require("../controllers/project.controller");
 
 // mergeParams: true é essencial aqui — sem isso, req.params.organizationId
@@ -14,6 +14,7 @@ router.post("/", validar(projectSchema), projectController.criar);
 router.get("/", projectController.listar);
 router.get("/:id", projectController.buscarPorId);
 router.patch("/:id", validar(projectRenameSchema), projectController.renomear);
+router.patch("/:id/background", validar(projectBackgroundSchema), projectController.atualizarFundo);
 router.delete("/:id", projectController.remover);
 
 module.exports = router;

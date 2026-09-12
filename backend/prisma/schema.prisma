@@ -90,6 +90,7 @@ model Project {
   organizationId String       @map("organization_id")
   name           String
   type           TipoProjeto  @default(saas)
+  background     String?      @map("background")
   createdAt      DateTime     @default(now()) @map("created_at")
   colunas        Coluna[]
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)

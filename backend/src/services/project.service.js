@@ -124,4 +124,9 @@ async function renomear(id, organizationId, organizationRole, name) {
   if (resultado.count === 0) throw new NotFoundError("Projeto não encontrado");
 }
 
-module.exports = { criar, listar, buscarPorId, remover, renomear };
+async function atualizarFundo(id, organizationId, background) {
+  const resultado = await projectRepository.atualizarFundo(id, organizationId, background);
+  if (resultado.count === 0) throw new NotFoundError("Projeto não encontrado");
+}
+
+module.exports = { criar, listar, buscarPorId, remover, renomear, atualizarFundo };

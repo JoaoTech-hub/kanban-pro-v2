@@ -41,6 +41,13 @@ function renomear(id, organizationId, name) {
   });
 }
 
+function atualizarFundo(id, organizationId, background) {
+  return prisma.project.updateMany({
+    where: { id, organizationId },
+    data: { background },
+  });
+}
+
 module.exports = {
   countByOrganization,
   create,
@@ -48,4 +55,5 @@ module.exports = {
   findByIdAndOrganization,
   deleteByIdAndOrganization,
   renomear,
+  atualizarFundo,
 };

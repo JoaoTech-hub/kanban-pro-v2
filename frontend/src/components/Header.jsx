@@ -3,6 +3,7 @@ import styled from "styled-components";
 
 import { useAuth } from "../context/AuthContext";
 import { useTheme } from "../context/ThemeContext";
+import BackgroundPicker from "./BackgroundPicker";
 
 import {
   HeaderContainer,
@@ -71,7 +72,7 @@ const ActionButton = styled.button`
   }
 `;
 
-export default function Header({ pesquisa, setPesquisa, abrirNovaTarefa }) {
+export default function Header({ pesquisa, setPesquisa, abrirNovaTarefa, projeto }) {
   const { nome, logout } = useAuth();
   const { dark, toggleTheme } = useTheme();
 
@@ -96,6 +97,8 @@ export default function Header({ pesquisa, setPesquisa, abrirNovaTarefa }) {
           <FiPlus />
           Nova tarefa
         </ActionButton>
+
+        <BackgroundPicker projeto={projeto} />
 
         <ActionButton
           $ghost

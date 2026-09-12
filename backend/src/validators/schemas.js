@@ -47,6 +47,21 @@ const projectRenameSchema = z.object({
   name: z.string().trim().min(1, "Nome do projeto é obrigatório").max(120),
 });
 
+const FUNDOS_PROJETO_PERMITIDOS = [
+  "petroleo",
+  "oceano",
+  "floresta",
+  "por-do-sol",
+  "uva",
+  "ardosia",
+  "ceu",
+  "vinho",
+];
+
+const projectBackgroundSchema = z.object({
+  background: z.enum(FUNDOS_PROJETO_PERMITIDOS).nullable(),
+});
+
 const perfilSchema = z.object({
   nome: z.string().trim().min(1, "Nome é obrigatório").max(100),
 });
@@ -118,6 +133,8 @@ module.exports = {
   moverCardSchema,
   projectSchema,
   projectRenameSchema,
+  projectBackgroundSchema,
+  FUNDOS_PROJETO_PERMITIDOS,
   perfilSchema,
   senhaSchema,
   esqueciSenhaSchema,
