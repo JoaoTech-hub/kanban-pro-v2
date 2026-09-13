@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { DragDropContext } from "@hello-pangea/dnd";
+import { DragDropContext, Droppable } from "@hello-pangea/dnd";
 
 import { useAuth } from "../context/AuthContext";
 import { useProject } from "../context/ProjectContext";
@@ -12,7 +12,6 @@ import Header from "../components/Header";
 import Column from "../components/Column";
 import NovaColuna from "../components/NovaColuna";
 import CardFormModal from "../components/CardFormModal";
-import Stats from "../components/Stats";
 
 import { ColumnsContainer, BoardArea } from "../styles/DashboardStyles";
 
@@ -37,6 +36,7 @@ export default function Dashboard() {
     setCards,
     criarColuna,
     renomearColuna,
+    moverColuna,
     excluirColuna,
     salvando,
     carregouAoMenosUmaVez,
@@ -50,6 +50,18 @@ export default function Dashboard() {
 
   async function onDragEnd(resultado) {
     if (!resultado.destination) return;
+
+    // Colunas usam type="COLUNA" (ver <Droppable> mais abaixo); cards
+    // ficam no type padrão ("DEFAULT"), então dá pra distinguir os dois
+    // cenários de drag-and-drop pelo mesmo onDragEnd do DragDropContext.
+    if (resultado.type === "COLUNA") {
+      // draggableId de coluna vem prefixado ("coluna-<id>") pra nunca ser
+      // confundido com o droppableId da lista de cards dessa mesma coluna
+      // (que usa o id "cru") dentro do mesmo DragDropContext.
+      const colunaId = resultado.draggableId.replace(/^coluna-/, "");
+      await moverColuna(colunaId, resultado.destination.index);
+      return;
+    }
 
     // IDs agora são UUIDs (strings) — o código antigo convertia com Number(),
     // o que quebraria silenciosamente (viraria NaN) com o banco novo.
@@ -123,6 +135,14 @@ export default function Dashboard() {
     return mapa;
   }, [cards, pesquisa]);
 
+  // Mesma lógica: a ordem visual das colunas agora determina o `index`
+  // passado pro Draggable de cada uma, então precisa estar sempre coerente
+  // com o campo `ordem`, não com a ordem de inserção no array em memória.
+  const colunasOrdenadas = useMemo(
+    () => [...colunas].sort((a, b) => a.ordem - b.ordem),
+    [colunas]
+  );
+
   if (erroProjeto) {
     return (
       <PageLayout>
@@ -155,8 +175,6 @@ export default function Dashboard() {
           projeto={projetoAtual}
         />
 
-        <Stats cards={cards} colunas={colunas} />
-
         {erro && (
           <p style={{ color: "#ef4444", marginTop: 20 }} role="alert">
             {erro}
@@ -175,22 +193,40 @@ export default function Dashboard() {
               durationDampening: { stopDampeningAt: 1200, accelerateAt: 360 },
             }}
           >
-            <ColumnsContainer ref={colunasRef} $arrastando={emArrasto} {...dragScrollHandlers}>
-              {colunas.map((coluna) => (
-                <Column
-                  key={coluna.id}
-                  coluna={coluna}
-                  cards={cardsPorColuna[coluna.id] ?? []}
-                  onEditar={abrirEdicao}
-                  onRenomear={renomearColuna}
-                  onExcluir={excluirColuna}
-                  cardAnimandoId={cardAnimandoId}
-                  onAnimacaoFim={limparAnimacao}
-                />
-              ))}
+            <Droppable droppableId="colunas-board" type="COLUNA" direction="horizontal">
+              {(providedColunas) => (
+                <ColumnsContainer
+                  ref={(node) => {
+                    // Duas libs precisam da mesma ref DOM aqui: o
+                    // useDragScroll (clicar-e-arrastar pra rolar) e o
+                    // Droppable do @hello-pangea/dnd (reordenar colunas).
+                    colunasRef.current = node;
+                    providedColunas.innerRef(node);
+                  }}
+                  {...providedColunas.droppableProps}
+                  $arrastando={emArrasto}
+                  {...dragScrollHandlers}
+                >
+                  {colunasOrdenadas.map((coluna, index) => (
+                    <Column
+                      key={coluna.id}
+                      coluna={coluna}
+                      index={index}
+                      cards={cardsPorColuna[coluna.id] ?? []}
+                      onEditar={abrirEdicao}
+                      onRenomear={renomearColuna}
+                      onExcluir={excluirColuna}
+                      cardAnimandoId={cardAnimandoId}
+                      onAnimacaoFim={limparAnimacao}
+                    />
+                  ))}
 
-              <NovaColuna onCriar={criarColuna} salvando={salvando} />
-            </ColumnsContainer>
+                  {providedColunas.placeholder}
+
+                  <NovaColuna onCriar={criarColuna} salvando={salvando} />
+                </ColumnsContainer>
+              )}
+            </Droppable>
           </DragDropContext>
         )}
       </BoardArea>

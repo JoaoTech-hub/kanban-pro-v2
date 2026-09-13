@@ -33,6 +33,40 @@ async function renomear({ id, organizationId, projectId, nome, organizationRole 
   if (resultado.count === 0) throw new NotFoundError("Coluna não encontrada");
 }
 
+// Reordena as colunas de um projeto (drag-and-drop do quadro inteiro, não
+// dos cards). Liberado para qualquer membro da organização — mesma escolha
+// já feita em card.service.mover ("reordenar" é uma ação colaborativa do
+// dia a dia, diferente de renomear/excluir, que exigem papel gerencial.
+async function mover({ id, organizationId, projectId, ordem }) {
+  await prisma.$transaction(async (tx) => {
+    // Trava o PROJETO (não uma coluna específica) para serializar
+    // reordenações concorrentes — duas pessoas arrastando colunas ao mesmo
+    // tempo não podem gerar `ordem` duplicada ou com buracos.
+    const linhasProjeto = await tx.$queryRaw`SELECT id FROM "projects" WHERE id = ${projectId} AND "organization_id" = ${organizationId} FOR UPDATE`;
+    if (linhasProjeto.length === 0) throw new NotFoundError("Projeto não encontrado");
+
+    const colunas = await tx.coluna.findMany({
+      where: { organizationId, projectId },
+      orderBy: { ordem: "asc" },
+    });
+
+    if (!colunas.some((c) => c.id === id)) {
+      throw new NotFoundError("Coluna não encontrada");
+    }
+
+    const idsSemMovida = colunas.filter((c) => c.id !== id).map((c) => c.id);
+    // Clampa a posição pedida para um índice válido, igual ao mover de card.
+    const indice = Math.max(0, Math.min(ordem, idsSemMovida.length));
+    idsSemMovida.splice(indice, 0, id);
+
+    await Promise.all(
+      idsSemMovida.map((colunaId, novaOrdem) =>
+        tx.coluna.update({ where: { id: colunaId }, data: { ordem: novaOrdem } })
+      )
+    );
+  });
+}
+
 async function remover({ id, organizationId, projectId, organizationRole }) {
   garantirPapelGerencial(organizationRole);
   const resultado = await colunaRepository.deleteByIdAndProject(id, organizationId, projectId);
@@ -48,4 +82,4 @@ async function validarPertencimento(colunaId, organizationId, projectId) {
   return coluna;
 }
 
-module.exports = { listar, criar, renomear, remover, validarPertencimento };
+module.exports = { listar, criar, renomear, mover, remover, validarPertencimento };

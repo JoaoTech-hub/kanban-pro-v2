@@ -18,7 +18,6 @@ import {
   FiGrid,
   FiFolder,
   FiClipboard,
-  FiSettings,
   FiUser,
   FiUsers,
   FiMenu,
@@ -31,7 +30,6 @@ const itens = [
   { label: "Tarefas", icone: FiClipboard, rota: "/tarefas" },
   { label: "Equipe", icone: FiUsers, rota: "/equipe" },
   { label: "Perfil", icone: FiUser, rota: "/perfil" },
-  { label: "Configurações", icone: FiSettings, rota: "/configuracoes" },
 ];
 
 export default function Sidebar() {
@@ -41,7 +39,7 @@ export default function Sidebar() {
 
   function irPara(rota) {
     navigate(rota);
-    setAberta(false); // fecha o menu ao navegar, no mobile
+    setAberta(false);
   }
 
   return (

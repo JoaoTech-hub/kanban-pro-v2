@@ -1,9 +1,8 @@
-import { FiLogOut, FiPlus, FiMoon, FiSun, FiSearch } from "react-icons/fi";
+import { FiPlus, FiSearch } from "react-icons/fi";
 import styled from "styled-components";
 
 import { useAuth } from "../context/AuthContext";
-import { useTheme } from "../context/ThemeContext";
-import BackgroundPicker from "./BackgroundPicker";
+import HeaderMenu from "./HeaderMenu";
 
 import {
   HeaderContainer,
@@ -73,8 +72,7 @@ const ActionButton = styled.button`
 `;
 
 export default function Header({ pesquisa, setPesquisa, abrirNovaTarefa, projeto }) {
-  const { nome, logout } = useAuth();
-  const { dark, toggleTheme } = useTheme();
+  const { nome } = useAuth();
 
   return (
     <HeaderContainer>
@@ -98,20 +96,7 @@ export default function Header({ pesquisa, setPesquisa, abrirNovaTarefa, projeto
           Nova tarefa
         </ActionButton>
 
-        <BackgroundPicker projeto={projeto} />
-
-        <ActionButton
-          $ghost
-          onClick={toggleTheme}
-          title={dark ? "Modo claro" : "Modo escuro"}
-          aria-label={dark ? "Ativar modo claro" : "Ativar modo escuro"}
-        >
-          {dark ? <FiSun /> : <FiMoon />}
-        </ActionButton>
-
-        <ActionButton $ghost onClick={logout} title="Sair" aria-label="Sair da conta">
-          <FiLogOut />
-        </ActionButton>
+        <HeaderMenu projeto={projeto} />
       </Right>
     </HeaderContainer>
   );

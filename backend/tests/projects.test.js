@@ -284,6 +284,143 @@ describe("Projects", () => {
     });
   });
 
+    describe("Fundo do quadro (background)", () => {
+    test("atualiza o fundo do quadro com uma chave válida", async () => {
+      const usuario = await registrarUsuario("bg1");
+
+      const criado = await request(app)
+        .post(`/organizations/${usuario.organizationId}/projects`)
+        .set("Authorization", `Bearer ${usuario.token}`)
+        .send({ name: "Quadro com fundo" });
+
+      const atualizar = await request(app)
+        .patch(`/organizations/${usuario.organizationId}/projects/${criado.body.id}/background`)
+        .set("Authorization", `Bearer ${usuario.token}`)
+        .send({ background: "oceano" });
+
+      expect(atualizar.status).toBe(204);
+
+      const busca = await request(app)
+        .get(`/organizations/${usuario.organizationId}/projects/${criado.body.id}`)
+        .set("Authorization", `Bearer ${usuario.token}`);
+
+      expect(busca.body.background).toBe("oceano");
+    });
+
+    test("aceita `null` para voltar ao fundo padrão", async () => {
+      const usuario = await registrarUsuario("bg2");
+
+      const criado = await request(app)
+        .post(`/organizations/${usuario.organizationId}/projects`)
+        .set("Authorization", `Bearer ${usuario.token}`)
+        .send({ name: "Quadro" });
+
+      await request(app)
+        .patch(`/organizations/${usuario.organizationId}/projects/${criado.body.id}/background`)
+        .set("Authorization", `Bearer ${usuario.token}`)
+        .send({ background: "vinho" });
+
+      const resetar = await request(app)
+        .patch(`/organizations/${usuario.organizationId}/projects/${criado.body.id}/background`)
+        .set("Authorization", `Bearer ${usuario.token}`)
+        .send({ background: null });
+
+      expect(resetar.status).toBe(204);
+
+      const busca = await request(app)
+        .get(`/organizations/${usuario.organizationId}/projects/${criado.body.id}`)
+        .set("Authorization", `Bearer ${usuario.token}`);
+
+      expect(busca.body.background).toBeNull();
+    });
+
+    test("rejeita chave de fundo fora da lista permitida (400)", async () => {
+      const usuario = await registrarUsuario("bg3");
+
+      const criado = await request(app)
+        .post(`/organizations/${usuario.organizationId}/projects`)
+        .set("Authorization", `Bearer ${usuario.token}`)
+        .send({ name: "Quadro" });
+
+      const res = await request(app)
+        .patch(`/organizations/${usuario.organizationId}/projects/${criado.body.id}/background`)
+        .set("Authorization", `Bearer ${usuario.token}`)
+        .send({ background: "url(javascript:alert(1))" });
+
+      expect(res.status).toBe(400);
+    });
+
+    test("rejeita omitir o campo background (400) — precisa mandar null explicitamente pra resetar", async () => {
+      const usuario = await registrarUsuario("bg4");
+
+      const criado = await request(app)
+        .post(`/organizations/${usuario.organizationId}/projects`)
+        .set("Authorization", `Bearer ${usuario.token}`)
+        .send({ name: "Quadro" });
+
+      const res = await request(app)
+        .patch(`/organizations/${usuario.organizationId}/projects/${criado.body.id}/background`)
+        .set("Authorization", `Bearer ${usuario.token}`)
+        .send({});
+
+      expect(res.status).toBe(400);
+    });
+
+    test("404 ao tentar alterar fundo de projeto inexistente", async () => {
+      const usuario = await registrarUsuario("bg5");
+      const idInexistente = "00000000-0000-0000-0000-000000000000";
+
+      const res = await request(app)
+        .patch(`/organizations/${usuario.organizationId}/projects/${idInexistente}/background`)
+        .set("Authorization", `Bearer ${usuario.token}`)
+        .send({ background: "ceu" });
+
+      expect(res.status).toBe(404);
+    });
+
+    test("usuário de uma organização não consegue alterar o fundo de projeto de outra organização (IDOR)", async () => {
+      const usuarioA = await registrarUsuario("bgIdorA");
+      const usuarioB = await registrarUsuario("bgIdorB");
+
+      const projetoDeA = await request(app)
+        .post(`/organizations/${usuarioA.organizationId}/projects`)
+        .set("Authorization", `Bearer ${usuarioA.token}`)
+        .send({ name: "Projeto Privado de A" });
+
+      const tentativa = await request(app)
+        .patch(`/organizations/${usuarioB.organizationId}/projects/${projetoDeA.body.id}/background`)
+        .set("Authorization", `Bearer ${usuarioB.token}`)
+        .send({ background: "vinho" });
+
+      expect(tentativa.status).toBe(404);
+
+      // Confirma que o fundo do projeto de A não foi alterado pela tentativa.
+      const busca = await request(app)
+        .get(`/organizations/${usuarioA.organizationId}/projects/${projetoDeA.body.id}`)
+        .set("Authorization", `Bearer ${usuarioA.token}`);
+
+      expect(busca.body.background).toBeNull();
+    });
+
+    test("member (não apenas owner/admin) consegue alterar o fundo do quadro — diferente de renomear, é uma ação cosmética liberada a qualquer membro", async () => {
+      const owner = await registrarUsuario("bgRoleOwner");
+      const membro = await registrarUsuario("bgRoleMember");
+      await adicionarMembro(owner.organizationId, membro.token, "member");
+
+      const criado = await request(app)
+        .post(`/organizations/${owner.organizationId}/projects`)
+        .set("Authorization", `Bearer ${owner.token}`)
+        .send({ name: "Quadro do Owner" });
+
+      const res = await request(app)
+        .patch(`/organizations/${owner.organizationId}/projects/${criado.body.id}/background`)
+        .set("Authorization", `Bearer ${membro.token}`)
+        .send({ background: "floresta" });
+
+      expect(res.status).toBe(204);
+    });
+  });
+
   describe("Regras de plano", () => {
     test("plano Free permite criar até 10 projetos, e bloqueia o 11º (403)", async () => {
       const usuario = await registrarUsuario("planFree");

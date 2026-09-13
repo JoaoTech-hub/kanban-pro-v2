@@ -38,6 +38,20 @@ async function renomear(req, res, next) {
   }
 }
 
+async function mover(req, res, next) {
+  try {
+    await colunaService.mover({
+      id: req.params.id,
+      organizationId: req.organization.id,
+      projectId: req.params.projectId,
+      ordem: req.body.ordem,
+    });
+    res.json({ mensagem: "Coluna movida" });
+  } catch (err) {
+    next(err);
+  }
+}
+
 async function excluir(req, res, next) {
   try {
     await colunaService.remover({
@@ -52,4 +66,4 @@ async function excluir(req, res, next) {
   }
 }
 
-module.exports = { listar, criar, renomear, excluir };
+module.exports = { listar, criar, renomear, mover, excluir };

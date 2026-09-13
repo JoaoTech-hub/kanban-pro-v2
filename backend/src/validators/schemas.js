@@ -38,6 +38,10 @@ const moverCardSchema = z.object({
   ordem: z.number().int().min(0),
 });
 
+const moverColunaSchema = z.object({
+  ordem: z.number().int().min(0),
+});
+
 const projectSchema = z.object({
   name: z.string().trim().min(1, "Nome do projeto é obrigatório").max(120),
   type: z.enum(["saas", "app", "jogo"]).optional().default("saas"),
@@ -131,6 +135,7 @@ module.exports = {
   colunaSchema,
   cardSchema,
   moverCardSchema,
+  moverColunaSchema,
   projectSchema,
   projectRenameSchema,
   projectBackgroundSchema,

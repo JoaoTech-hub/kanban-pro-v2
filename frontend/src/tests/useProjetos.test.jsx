@@ -303,6 +303,103 @@ describe("useProjetos", () => {
     });
   });
 
+  describe("atualizarFundoProjeto", () => {
+    test("atualiza o background na lista de projetos e persiste na API", async () => {
+      api.get.mockResolvedValueOnce({
+        data: [{ id: "p1", name: "Projeto 1", background: null }],
+      });
+      api.patch.mockResolvedValueOnce({});
+
+      const { result } = renderHook(() => useProjetos(ORG_ID), { wrapper });
+
+      await act(async () => {
+        await result.current.carregar();
+      });
+
+      let sucesso;
+      await act(async () => {
+        sucesso = await result.current.atualizarFundoProjeto("p1", "oceano");
+      });
+
+      expect(sucesso).toBe(true);
+      expect(api.patch).toHaveBeenCalledWith(
+        `/organizations/${ORG_ID}/projects/p1/background`,
+        { background: "oceano" }
+      );
+      expect(result.current.projetos.find((p) => p.id === "p1").background).toBe("oceano");
+    });
+
+    test("aceita `null` pra voltar ao fundo padrão", async () => {
+      api.get.mockResolvedValueOnce({
+        data: [{ id: "p1", name: "Projeto 1", background: "vinho" }],
+      });
+      api.patch.mockResolvedValueOnce({});
+
+      const { result } = renderHook(() => useProjetos(ORG_ID), { wrapper });
+
+      await act(async () => {
+        await result.current.carregar();
+      });
+
+      await act(async () => {
+        await result.current.atualizarFundoProjeto("p1", null);
+      });
+
+      expect(api.patch).toHaveBeenCalledWith(
+        `/organizations/${ORG_ID}/projects/p1/background`,
+        { background: null }
+      );
+      expect(result.current.projetos.find((p) => p.id === "p1").background).toBeNull();
+    });
+
+    test("em caso de falha da API, desfaz a mudança otimista de fundo", async () => {
+      api.get.mockResolvedValueOnce({
+        data: [{ id: "p1", name: "Projeto 1", background: null }],
+      });
+      api.patch.mockRejectedValueOnce({
+        response: { data: { erro: "Erro ao alterar o fundo do quadro." } },
+      });
+
+      const { result } = renderHook(() => useProjetos(ORG_ID), { wrapper });
+
+      await act(async () => {
+        await result.current.carregar();
+      });
+
+      let sucesso;
+      await act(async () => {
+        sucesso = await result.current.atualizarFundoProjeto("p1", "vinho");
+      });
+
+      expect(sucesso).toBe(false);
+      // Rollback: volta pro valor de antes da tentativa (null).
+      expect(result.current.projetos.find((p) => p.id === "p1").background).toBeNull();
+    });
+
+    test("não mexe no background de outros projetos da lista", async () => {
+      api.get.mockResolvedValueOnce({
+        data: [
+          { id: "p1", name: "Projeto 1", background: null },
+          { id: "p2", name: "Projeto 2", background: "ceu" },
+        ],
+      });
+      api.patch.mockResolvedValueOnce({});
+
+      const { result } = renderHook(() => useProjetos(ORG_ID), { wrapper });
+
+      await act(async () => {
+        await result.current.carregar();
+      });
+
+      await act(async () => {
+        await result.current.atualizarFundoProjeto("p1", "floresta");
+      });
+
+      expect(result.current.projetos.find((p) => p.id === "p1").background).toBe("floresta");
+      expect(result.current.projetos.find((p) => p.id === "p2").background).toBe("ceu");
+    });
+  });
+
   describe("excluirProjeto", () => {
     test("remove da lista e mantém o projeto ativo quando não era o excluído", async () => {
       api.get.mockResolvedValueOnce({

@@ -50,6 +50,40 @@ export function useColunas(organizationId, projectId, { colunas, setColunas, set
     [base, colunas, setColunas, showToast]
   );
 
+  // Reordena as colunas do quadro (drag-and-drop da coluna inteira, com
+  // os cards dentro — não confundir com moverCard, que move um card entre
+  // colunas). Mesmo padrão otimista de moverCardNoEstado: recompacta a
+  // `ordem` de TODAS as colunas localmente, na mesma sequência 0..n-1 que
+  // o backend vai calcular, pra não ter ordem duplicada entre o solte do
+  // mouse e a resposta do servidor.
+  const moverColuna = useCallback(
+    async (id, novaOrdem) => {
+      const anterior = colunas;
+
+      const idsOrdenados = [...colunas].sort((a, b) => a.ordem - b.ordem).map((c) => c.id);
+      const idsSemMovida = idsOrdenados.filter((colunaId) => colunaId !== id);
+      const indice = Math.max(0, Math.min(novaOrdem, idsSemMovida.length));
+      idsSemMovida.splice(indice, 0, id);
+
+      const novaOrdemPorId = new Map(idsSemMovida.map((colunaId, index) => [colunaId, index]));
+
+      setColunas((prev) =>
+        prev
+          .map((c) => (novaOrdemPorId.has(c.id) ? { ...c, ordem: novaOrdemPorId.get(c.id) } : c))
+          .sort((a, b) => a.ordem - b.ordem)
+      );
+
+      try {
+        await api.patch(`${base}/colunas/${id}/mover`, { ordem: novaOrdem });
+      } catch (erro) {
+        console.error(erro);
+        setColunas(anterior); // desfaz se der erro
+        showToast(erro.response?.data?.erro || "Erro ao mover coluna.", "erro");
+      }
+    },
+    [base, colunas, setColunas, showToast]
+  );
+
   const excluirColuna = useCallback(
     async (id) => {
       // Otimista: some da tela na hora. Se der erro, recarrega tudo do zero
@@ -75,5 +109,5 @@ export function useColunas(organizationId, projectId, { colunas, setColunas, set
     [base, colunas, setColunas, setCards, carregar, showToast]
   );
 
-  return { criarColuna, renomearColuna, excluirColuna, salvando };
+  return { criarColuna, renomearColuna, moverColuna, excluirColuna, salvando };
 }

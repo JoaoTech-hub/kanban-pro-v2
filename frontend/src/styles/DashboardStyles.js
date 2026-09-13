@@ -1,6 +1,18 @@
 import styled, { keyframes, css } from "styled-components";
 
 // overflow-x: auto impede quebra de layout quando há muitas colunas
+// Envolve Header + Stats + colunas — é aqui que o fundo escolhido no
+// BackgroundPicker é pintado. Sem fundo customizado ($fundo null), fica
+// transparente e o layout continua idêntico a antes (zero diferença
+// visual pra quem nunca abrir o seletor).
+export const BoardArea = styled.div`
+  background: ${({ $fundo }) => $fundo || "transparent"};
+  border-radius: 16px;
+  padding: ${({ $fundo }) => ($fundo ? "16px" : "0")};
+  margin: ${({ $fundo }) => ($fundo ? "-16px" : "0")};
+  transition: background 0.2s;
+`;
+
 export const ColumnsContainer = styled.div`
   display: flex;
   align-items: flex-start; /* cada coluna cresce pelo próprio conteúdo, não pela mais alta */
@@ -47,26 +59,21 @@ export const EmptyColumnMessage = styled.div`
   }
 `;
 
-export const BoardArea = styled.div`
-  background: ${({ $fundo }) => $fundo || "transparent"};
-  border-radius: 16px;
-  padding: ${({ $fundo }) => ($fundo ? "16px" : "0")};
-  margin: ${({ $fundo }) => ($fundo ? "-16px" : "0")};
-  transition: background 0.2s;
-`;
-
 export const ColumnContainer = styled.div`
   flex: 0 0 272px; /* largura fixa para permitir scroll horizontal */
   width: 272px;
   min-width: 0;
-  background: ${({ theme, $isDraggingOver }) =>
-    $isDraggingOver ? theme.border : theme.column};
+  background: ${({ theme }) => theme.column};
   border-radius: 12px;
   padding: 8px;
   padding-bottom: 24px; /* espaço extra pra soltar um card no fim da lista */
   min-height: 40px; /* só o suficiente pra área de drop funcionar quando vazia */
-  box-shadow: 0 4px 12px ${({ theme }) => theme.shadow};
-  transition: background 0.15s;
+  /* Feedback visual de "estou sendo arrastada" (a coluna inteira, não um
+     card) — levanta e destaca um pouco enquanto o usuário move ela. */
+  box-shadow: ${({ theme, $arrastando }) =>
+    $arrastando ? `0 10px 24px ${theme.shadow}` : `0 4px 12px ${theme.shadow}`};
+  opacity: ${({ $arrastando }) => ($arrastando ? 0.9 : 1)};
+  transition: background 0.15s, box-shadow 0.15s;
 
   @media (max-width: 480px) {
     flex-basis: 82vw;
@@ -74,6 +81,20 @@ export const ColumnContainer = styled.div`
     padding: 8px;
     padding-bottom: 24px;
   }
+`;
+
+// Área interna que efetivamente recebe os cards soltos — antes essa
+// função de destacar quando um CARD paira por cima ($isDraggingOver) era
+// do próprio ColumnContainer, mas agora ColumnContainer também controla o
+// feedback de a COLUNA estar sendo arrastada ($arrastando), e são dois
+// estados diferentes que podem inclusive acontecer em contextos distintos
+// — por isso separados em dois elementos.
+export const CardsDropZone = styled.div`
+  background: ${({ theme, $isDraggingOver }) =>
+    $isDraggingOver ? theme.border : "transparent"};
+  border-radius: 8px;
+  min-height: 8px;
+  transition: background 0.15s;
 `;
 
 export const CardContainer = styled.div`

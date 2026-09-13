@@ -228,6 +228,206 @@ describe("Colunas e Cards", () => {
     });
   });
 
+      describe("mover() — reordenar colunas do quadro", () => {
+      test("mover a última coluna para o início desloca as demais corretamente", async () => {
+        const usuario = await registrarUsuario("moverColInicio");
+        const projeto = await criarProjeto(usuario.token, usuario.organizationId);
+        const iniciais = (
+          await request(app)
+            .get(`${base(usuario.organizationId, projeto.id)}/colunas`)
+            .set("Authorization", `Bearer ${usuario.token}`)
+        ).body;
+        // ordem padrão: A Fazer(0), Em Andamento(1), Concluído(2)
+        const concluido = iniciais.find((c) => c.nome === "Concluído");
+
+        const resposta = await request(app)
+          .patch(`${base(usuario.organizationId, projeto.id)}/colunas/${concluido.id}/mover`)
+          .set("Authorization", `Bearer ${usuario.token}`)
+          .send({ ordem: 0 });
+
+        expect(resposta.status).toBe(200);
+
+        const finais = (
+          await request(app)
+            .get(`${base(usuario.organizationId, projeto.id)}/colunas`)
+            .set("Authorization", `Bearer ${usuario.token}`)
+        ).body;
+
+        expect(finais.map((c) => c.nome)).toEqual(["Concluído", "A Fazer", "Em Andamento"]);
+        expect(finais.map((c) => c.ordem)).toEqual([0, 1, 2]);
+      });
+
+      test("mover a primeira coluna para o meio desloca as demais corretamente", async () => {
+        const usuario = await registrarUsuario("moverColMeio");
+        const projeto = await criarProjeto(usuario.token, usuario.organizationId);
+        const iniciais = (
+          await request(app)
+            .get(`${base(usuario.organizationId, projeto.id)}/colunas`)
+            .set("Authorization", `Bearer ${usuario.token}`)
+        ).body;
+        const aFazer = iniciais.find((c) => c.nome === "A Fazer");
+
+        await request(app)
+          .patch(`${base(usuario.organizationId, projeto.id)}/colunas/${aFazer.id}/mover`)
+          .set("Authorization", `Bearer ${usuario.token}`)
+          .send({ ordem: 1 });
+
+        const finais = (
+          await request(app)
+            .get(`${base(usuario.organizationId, projeto.id)}/colunas`)
+            .set("Authorization", `Bearer ${usuario.token}`)
+        ).body;
+
+        expect(finais.map((c) => c.nome)).toEqual(["Em Andamento", "A Fazer", "Concluído"]);
+        expect(finais.map((c) => c.ordem)).toEqual([0, 1, 2]);
+      });
+
+      test("mover para a posição atual não corrompe a ordem nem faz trabalho desnecessário", async () => {
+        const usuario = await registrarUsuario("moverColMesmaPos");
+        const projeto = await criarProjeto(usuario.token, usuario.organizationId);
+        const iniciais = (
+          await request(app)
+            .get(`${base(usuario.organizationId, projeto.id)}/colunas`)
+            .set("Authorization", `Bearer ${usuario.token}`)
+        ).body;
+        const emAndamento = iniciais.find((c) => c.nome === "Em Andamento");
+
+        await request(app)
+          .patch(`${base(usuario.organizationId, projeto.id)}/colunas/${emAndamento.id}/mover`)
+          .set("Authorization", `Bearer ${usuario.token}`)
+          .send({ ordem: 1 });
+
+        const finais = (
+          await request(app)
+            .get(`${base(usuario.organizationId, projeto.id)}/colunas`)
+            .set("Authorization", `Bearer ${usuario.token}`)
+        ).body;
+
+        expect(finais.map((c) => c.nome)).toEqual(["A Fazer", "Em Andamento", "Concluído"]);
+        expect(finais.map((c) => c.ordem)).toEqual([0, 1, 2]);
+      });
+
+      test("ordem enviada além do tamanho da lista é clampada pro final", async () => {
+        const usuario = await registrarUsuario("moverColClamp");
+        const projeto = await criarProjeto(usuario.token, usuario.organizationId);
+        const iniciais = (
+          await request(app)
+            .get(`${base(usuario.organizationId, projeto.id)}/colunas`)
+            .set("Authorization", `Bearer ${usuario.token}`)
+        ).body;
+        const aFazer = iniciais.find((c) => c.nome === "A Fazer");
+
+        const resposta = await request(app)
+          .patch(`${base(usuario.organizationId, projeto.id)}/colunas/${aFazer.id}/mover`)
+          .set("Authorization", `Bearer ${usuario.token}`)
+          .send({ ordem: 999 });
+
+        expect(resposta.status).toBe(200);
+
+        const finais = (
+          await request(app)
+            .get(`${base(usuario.organizationId, projeto.id)}/colunas`)
+            .set("Authorization", `Bearer ${usuario.token}`)
+        ).body;
+
+        expect(finais.map((c) => c.nome)).toEqual(["Em Andamento", "Concluído", "A Fazer"]);
+      });
+
+      test("member PODE mover coluna (200) — reordenar é liberado a qualquer membro, diferente de renomear/excluir", async () => {
+        const owner = await registrarUsuario("moverColRoleOwner");
+        const membro = await registrarUsuario("moverColRoleMember");
+        await adicionarMembro(owner.organizationId, membro.token, "member");
+        const projeto = await criarProjeto(owner.token, owner.organizationId);
+        const colunas = (
+          await request(app)
+            .get(`${base(owner.organizationId, projeto.id)}/colunas`)
+            .set("Authorization", `Bearer ${owner.token}`)
+        ).body;
+
+        const resposta = await request(app)
+          .patch(`${base(owner.organizationId, projeto.id)}/colunas/${colunas[0].id}/mover`)
+          .set("Authorization", `Bearer ${membro.token}`)
+          .send({ ordem: 2 });
+
+        expect(resposta.status).toBe(200);
+      });
+
+      test("404 ao mover uma coluna inexistente", async () => {
+        const usuario = await registrarUsuario("moverColInexistente");
+        const projeto = await criarProjeto(usuario.token, usuario.organizationId);
+        const idInexistente = "00000000-0000-0000-0000-000000000000";
+
+        const resposta = await request(app)
+          .patch(`${base(usuario.organizationId, projeto.id)}/colunas/${idInexistente}/mover`)
+          .set("Authorization", `Bearer ${usuario.token}`)
+          .send({ ordem: 0 });
+
+        expect(resposta.status).toBe(404);
+      });
+
+      test("404 ao mover uma coluna que pertence a outro projeto/organização (IDOR)", async () => {
+        const usuarioA = await registrarUsuario("moverColIdorA");
+        const usuarioB = await registrarUsuario("moverColIdorB");
+        const projetoA = await criarProjeto(usuarioA.token, usuarioA.organizationId);
+        const colunasDeA = (
+          await request(app)
+            .get(`${base(usuarioA.organizationId, projetoA.id)}/colunas`)
+            .set("Authorization", `Bearer ${usuarioA.token}`)
+        ).body;
+        const colunaDeA = colunasDeA[0].id;
+
+        const projetoB = await criarProjeto(usuarioB.token, usuarioB.organizationId);
+        const resposta = await request(app)
+          .patch(`${base(usuarioB.organizationId, projetoB.id)}/colunas/${colunaDeA}/mover`)
+          .set("Authorization", `Bearer ${usuarioB.token}`)
+          .send({ ordem: 0 });
+
+        expect(resposta.status).toBe(404);
+
+        // Confirma que a ordem das colunas de A não foi afetada pela tentativa.
+        const colunasDeAApos = (
+          await request(app)
+            .get(`${base(usuarioA.organizationId, projetoA.id)}/colunas`)
+            .set("Authorization", `Bearer ${usuarioA.token}`)
+        ).body;
+        expect(colunasDeAApos.map((c) => c.ordem)).toEqual([0, 1, 2]);
+      });
+
+      test("400 ao mover sem enviar ordem", async () => {
+        const usuario = await registrarUsuario("moverColSemOrdem");
+        const projeto = await criarProjeto(usuario.token, usuario.organizationId);
+        const colunas = (
+          await request(app)
+            .get(`${base(usuario.organizationId, projeto.id)}/colunas`)
+            .set("Authorization", `Bearer ${usuario.token}`)
+        ).body;
+
+        const resposta = await request(app)
+          .patch(`${base(usuario.organizationId, projeto.id)}/colunas/${colunas[0].id}/mover`)
+          .set("Authorization", `Bearer ${usuario.token}`)
+          .send({});
+
+        expect(resposta.status).toBe(400);
+      });
+
+      test("400 ao mover com ordem negativa", async () => {
+        const usuario = await registrarUsuario("moverColOrdemNegativa");
+        const projeto = await criarProjeto(usuario.token, usuario.organizationId);
+        const colunas = (
+          await request(app)
+            .get(`${base(usuario.organizationId, projeto.id)}/colunas`)
+            .set("Authorization", `Bearer ${usuario.token}`)
+        ).body;
+
+        const resposta = await request(app)
+          .patch(`${base(usuario.organizationId, projeto.id)}/colunas/${colunas[0].id}/mover`)
+          .set("Authorization", `Bearer ${usuario.token}`)
+          .send({ ordem: -1 });
+
+        expect(resposta.status).toBe(400);
+      });
+    });
+
   describe("Cards", () => {
     test("cria e lista um card na coluna correta", async () => {
       const usuario = await registrarUsuario("cardA");

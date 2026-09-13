@@ -1,10 +1,10 @@
 import { useState } from "react";
-import { Droppable } from "@hello-pangea/dnd";
+import { Draggable, Droppable } from "@hello-pangea/dnd";
 import { FiEdit2, FiTrash2, FiCheck, FiX, FiInbox } from "react-icons/fi";
 import styled from "styled-components";
 import Card from "./Card";
 import ConfirmModal from "./ConfirmModal";
-import { ColumnContainer, EmptyColumnMessage } from "../styles/DashboardStyles";
+import { ColumnContainer, CardsDropZone, EmptyColumnMessage } from "../styles/DashboardStyles";
 
 const ColumnHeader = styled.div`
   display: flex;
@@ -12,6 +12,9 @@ const ColumnHeader = styled.div`
   align-items: center;
   margin-bottom: 4px;
   gap: 8px;
+  /* Enquanto não está editando, o cabeçalho inteiro é a "alça" de arrastar
+     a coluna (mesma ideia do Trello) — por isso o cursor muda pra indicar. */
+  cursor: ${({ $arrastavel }) => ($arrastavel ? "grab" : "default")};
 `;
 
 const ColumnTitle = styled.h2`
@@ -73,6 +76,7 @@ const TituloInput = styled.input`
 
 export default function Column({
   coluna,
+  index,
   cards,
   onEditar,
   onRenomear,
@@ -118,14 +122,22 @@ export default function Column({
   }
 
   return (
-    <Droppable droppableId={String(coluna.id)}>
-      {(provided, snapshot) => (
+    <Draggable draggableId={`coluna-${coluna.id}`} index={index}>
+      {(providedColuna, snapshotColuna) => (
         <ColumnContainer
-          ref={provided.innerRef}
-          {...provided.droppableProps}
-          $isDraggingOver={snapshot.isDraggingOver}
+          ref={providedColuna.innerRef}
+          {...providedColuna.draggableProps}
+          $arrastando={snapshotColuna.isDragging}
         >
-          <ColumnHeader>
+          <ColumnHeader
+            // Só vira "alça de arrastar" fora do modo de edição — se
+            // aplicasse isso durante a digitação do novo nome, apertar a
+            // barra de espaço no meio de uma palavra seria interpretado
+            // como um atalho de teclado pra levantar a coluna (o
+            // @hello-pangea/dnd escuta espaço pra drag via teclado).
+            {...(!editando ? providedColuna.dragHandleProps : {})}
+            $arrastavel={!editando}
+          >
             {editando ? (
               <>
                 <TituloInput
@@ -162,25 +174,35 @@ export default function Column({
             )}
           </ColumnHeader>
 
-          {cards.map((card, index) => (
-            <Card
-              key={card.id}
-              card={card}
-              index={index}
-              onEditar={onEditar}
-              animando={card.id === cardAnimandoId}
-              onAnimacaoFim={onAnimacaoFim}
-            />
-          ))}
+          <Droppable droppableId={String(coluna.id)}>
+            {(provided, snapshot) => (
+              <CardsDropZone
+                ref={provided.innerRef}
+                {...provided.droppableProps}
+                $isDraggingOver={snapshot.isDraggingOver}
+              >
+                {cards.map((card, indexCard) => (
+                  <Card
+                    key={card.id}
+                    card={card}
+                    index={indexCard}
+                    onEditar={onEditar}
+                    animando={card.id === cardAnimandoId}
+                    onAnimacaoFim={onAnimacaoFim}
+                  />
+                ))}
 
-          {cards.length === 0 && (
-            <EmptyColumnMessage>
-              <FiInbox size={22} />
-              Nenhuma tarefa aqui ainda.
-            </EmptyColumnMessage>
-          )}
+                {cards.length === 0 && (
+                  <EmptyColumnMessage>
+                    <FiInbox size={22} />
+                    Nenhuma tarefa aqui ainda.
+                  </EmptyColumnMessage>
+                )}
 
-          {provided.placeholder}
+                {provided.placeholder}
+              </CardsDropZone>
+            )}
+          </Droppable>
 
           <ConfirmModal
             aberto={modalExcluirAberto}
@@ -195,6 +217,6 @@ export default function Column({
           />
         </ColumnContainer>
       )}
-    </Droppable>
+    </Draggable>
   );
 }
