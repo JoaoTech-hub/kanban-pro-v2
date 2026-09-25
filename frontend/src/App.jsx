@@ -23,6 +23,8 @@ import AppShell from "./components/AppShell";
 const Registro = lazy(() => import("./pages/Registro"));
 const EsqueciSenha = lazy(() => import("./pages/EsqueciSenha"));
 const RedefinirSenha = lazy(() => import("./pages/RedefinirSenha"));
+const ConfirmeSeuEmail = lazy(() => import("./pages/ConfirmeSeuEmail"));
+const VerificarEmail = lazy(() => import("./pages/VerificarEmail"));
 const Dashboard = lazy(() => import("./pages/Dashboard"));
 const Projetos = lazy(() => import("./pages/Projetos"));
 const Tarefas = lazy(() => import("./pages/Tarefas"));
@@ -52,6 +54,16 @@ function ThemedApp() {
                       <Route path="/esqueci-senha" element={<EsqueciSenha />} />
                       <Route path="/redefinir-senha" element={<RedefinirSenha />} />
                       <Route path="/convites/:token" element={<AceitarConvite />} />
+                      <Route path="/verificar-email" element={<VerificarEmail />} />
+
+                      <Route
+                        path="/confirme-seu-email"
+                        element={
+                          <ProtectedRoute>
+                            <ConfirmeSeuEmail />
+                          </ProtectedRoute>
+                        }
+                      />
 
                       <Route
                         path="/equipe"

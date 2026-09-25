@@ -38,8 +38,13 @@ export default function Login() {
       const resposta = await api.post("/login", { email, senha });
 
       if (conviteToken) {
+        // Fluxo de convite preservado como estava: sempre segue para o
+        // dashboard após aceitar (comportamento fora do escopo desta
+        // etapa). Só passamos emailVerified para o AuthContext manter o
+        // estado coerente com o que o backend retornou.
         login(resposta.data.token, resposta.data.nome, resposta.data.organizationId, {
           redirecionar: false,
+          emailVerified: resposta.data.emailVerified,
         });
 
         try {
@@ -58,7 +63,12 @@ export default function Login() {
         return;
       }
 
-      login(resposta.data.token, resposta.data.nome, resposta.data.organizationId);
+      const { token, nome, organizationId, emailVerified } = resposta.data;
+      // Fase 8.1: controle explícito da navegação (redirecionar: false)
+      // para encaminhar quem ainda não confirmou o e-mail para a tela de
+      // confirmação, em vez do dashboard direto.
+      login(token, nome, organizationId, { redirecionar: false, emailVerified });
+      navigate(emailVerified ? "/dashboard" : "/confirme-seu-email");
     } catch {
       setErro("E-mail ou senha inválidos.");
     } finally {

@@ -25,8 +25,19 @@ const Main = styled.main`
 // (Login.jsx), onde `autenticado` já vira true um instante antes do
 // navigate("/dashboard") disparar. Sem essa checagem por rota, a Sidebar
 // "piscaria" atrás do card de login nesse intervalo.
+// Também cobre as telas da Fase 8.1 (verificação de e-mail): o usuário já
+// está `autenticado` (tem token) ao ver /confirme-seu-email, mas ainda não
+// deve ver a navegação completa do app — e /verificar-email é acessada por
+// um link de e-mail, podendo ser aberta com uma sessão antiga já logada.
 const PREFIXOS_ROTA_PUBLICA = ["/convites/"];
-const ROTAS_PUBLICAS_EXATAS = ["/", "/registro", "/esqueci-senha", "/redefinir-senha"];
+const ROTAS_PUBLICAS_EXATAS = [
+  "/",
+  "/registro",
+  "/esqueci-senha",
+  "/redefinir-senha",
+  "/confirme-seu-email",
+  "/verificar-email",
+];
 
 function ehRotaPublica(pathname) {
   if (ROTAS_PUBLICAS_EXATAS.includes(pathname)) return true;

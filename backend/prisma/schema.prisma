@@ -22,15 +22,17 @@ model Organization {
 }
 
 model User {
-  id                  String               @id @default(uuid())
-  name                String
-  email               String               @unique
-  passwordHash        String               @map("password_hash")
-  createdAt           DateTime             @default(now()) @map("created_at")
-  tokenVersion        Int                  @default(0) @map("token_version")
-  memberships         OrganizationMember[]
-  passwordResetTokens PasswordResetToken[]
-  convitesEnviados    OrganizationInvite[] @relation("ConvitesEnviados")
+  id                      String                    @id @default(uuid())
+  name                    String
+  email                   String                    @unique
+  passwordHash            String?                   @map("password_hash")
+  emailVerified           Boolean                   @default(true) @map("email_verified")
+  createdAt               DateTime                  @default(now()) @map("created_at")
+  tokenVersion            Int                       @default(0) @map("token_version")
+  memberships             OrganizationMember[]
+  passwordResetTokens     PasswordResetToken[]
+  emailVerificationTokens EmailVerificationToken[]
+  convitesEnviados        OrganizationInvite[]      @relation("ConvitesEnviados")
 
   @@map("users")
 }
@@ -59,6 +61,19 @@ model PasswordResetToken {
 
   @@index([userId])
   @@map("password_reset_tokens")
+}
+
+model EmailVerificationToken {
+  id        String    @id @default(uuid())
+  userId    String    @map("user_id")
+  tokenHash String    @unique @map("token_hash")
+  expiresAt DateTime  @map("expires_at")
+  usedAt    DateTime? @map("used_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("email_verification_tokens")
 }
 
 // Segue o mesmo padrão do PasswordResetToken: nunca armazena o token bruto,

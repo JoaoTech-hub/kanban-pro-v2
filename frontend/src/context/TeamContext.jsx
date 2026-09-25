@@ -11,7 +11,7 @@ const TeamContext = createContext(null);
 // vez acima do <Routes> — não a cada visita à página Equipe. Refetch só
 // quando organizationId muda (troca de organização), não a cada navegação.
 export function TeamProvider({ children }) {
-  const { organizationId } = useAuth();
+  const { organizationId, emailVerified } = useAuth();
   const equipe = useEquipeEngine(organizationId);
   const { carregar } = equipe;
 
@@ -23,10 +23,15 @@ export function TeamProvider({ children }) {
       organizationIdAnterior.current = organizationId;
       setCarregouAoMenosUmaVez(false);
     }
-    if (organizationId) {
+    // Fase 8.1 (correção de auditoria): mesma razão do ProjectContext — só
+    // dispara o carregamento automático quando o e-mail já está
+    // verificado, para não bater em GET /organizations/:id/members e
+    // .../invites (bloqueados por requireOrganization) e disparar o toast
+    // de erro genérico de useEquipe.js indevidamente.
+    if (organizationId && emailVerified) {
       carregar().then(() => setCarregouAoMenosUmaVez(true));
     }
-  }, [organizationId, carregar]);
+  }, [organizationId, emailVerified, carregar]);
 
   const valor = { ...equipe, carregouAoMenosUmaVez };
 

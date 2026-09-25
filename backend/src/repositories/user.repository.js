@@ -8,17 +8,16 @@ function findById(id) {
   return prisma.user.findUnique({ where: { id } });
 }
 
-function create({ name, email, passwordHash }, client = prisma) {
-  return client.user.create({ data: { name, email, passwordHash } });
+function create({ name, email, passwordHash, emailVerified }, client = prisma) {
+  return client.user.create({
+    data: { name, email, passwordHash, emailVerified },
+  });
 }
 
 function updateName(id, name) {
   return prisma.user.update({ where: { id }, data: { name } });
 }
 
-// Incrementa tokenVersion na mesma operação — qualquer token emitido antes
-// dessa troca deixa de bater com a versão atual e passa a ser rejeitado
-// pelo middleware de autenticação, mesmo que ainda não tenha expirado.
 function updatePasswordHash(id, passwordHash) {
   return prisma.user.update({
     where: { id },
@@ -26,4 +25,15 @@ function updatePasswordHash(id, passwordHash) {
   });
 }
 
-module.exports = { findByEmail, findById, create, updateName, updatePasswordHash };
+function updateEmailVerified(id, emailVerified) {
+  return prisma.user.update({ where: { id }, data: { emailVerified } });
+}
+
+module.exports = {
+  findByEmail,
+  findById,
+  create,
+  updateName,
+  updatePasswordHash,
+  updateEmailVerified,
+};

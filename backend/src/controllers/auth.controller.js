@@ -21,7 +21,6 @@ async function login(req, res, next) {
 async function esqueciSenha(req, res, next) {
   try {
     await authService.solicitarResetSenha(req.body.email);
-    // Resposta genérica sempre — não revela se o e-mail existe no sistema.
     res.json({ mensagem: "Se o e-mail existir em nossa base, você receberá um link de recuperação." });
   } catch (err) {
     next(err);
@@ -37,4 +36,29 @@ async function redefinirSenha(req, res, next) {
   }
 }
 
-module.exports = { registrar, login, esqueciSenha, redefinirSenha };
+async function verificarEmail(req, res, next) {
+  try {
+    await authService.verificarEmail(req.body);
+    res.json({ mensagem: "E-mail confirmado com sucesso." });
+  } catch (err) {
+    next(err);
+  }
+}
+
+async function reenviarVerificacao(req, res, next) {
+  try {
+    await authService.reenviarVerificacao(req.usuarioId);
+    res.json({ mensagem: "Se sua conta ainda não estiver verificada, um novo e-mail foi enviado." });
+  } catch (err) {
+    next(err);
+  }
+}
+
+module.exports = {
+  registrar,
+  login,
+  esqueciSenha,
+  redefinirSenha,
+  verificarEmail,
+  reenviarVerificacao,
+};

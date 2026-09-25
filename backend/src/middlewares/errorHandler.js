@@ -10,6 +10,7 @@ function errorHandler(err, req, res, next) { // eslint-disable-line no-unused-va
 
   res.status(err.status || 500).json({
     erro: emProducao ? "Erro interno do servidor" : err.message || "Erro interno do servidor",
+    ...(err.codigo ? { codigo: err.codigo } : {}),
   });
 }
 

@@ -11,6 +11,14 @@ export function AuthProvider({ children }) {
   const [organizationId, setOrganizationId] = useState(
     () => localStorage.getItem("organizationId") || ""
   );
+  // Fase 8.1 (verificação de e-mail): persistido como string ("true"/"false")
+  // porque localStorage só guarda strings. Sessões criadas antes desta feature
+  // não têm essa chave — tratamos a ausência como "true" (verificado) para não
+  // bloquear usuários já logados que nunca passaram por esse fluxo.
+  const [emailVerified, setEmailVerified] = useState(() => {
+    const armazenado = localStorage.getItem("emailVerified");
+    return armazenado === null ? true : armazenado === "true";
+  });
   const navigate = useNavigate();
 
   // Estabiliza o acesso a `navigate` contra a instabilidade de referência
@@ -34,13 +42,20 @@ export function AuthProvider({ children }) {
   // (trocar a organização ativa pra recém-aceita antes de ir pro dashboard),
   // em vez de já cair direto em /dashboard com a organização antiga.
   const login = useCallback(
-    (novoToken, nomeUsuario, novaOrganizationId, { redirecionar = true } = {}) => {
+    (
+      novoToken,
+      nomeUsuario,
+      novaOrganizationId,
+      { redirecionar = true, emailVerified: emailVerificadoResposta = true } = {}
+    ) => {
       localStorage.setItem("token", novoToken);
       localStorage.setItem("nome", nomeUsuario);
       localStorage.setItem("organizationId", novaOrganizationId || "");
+      localStorage.setItem("emailVerified", String(emailVerificadoResposta));
       setToken(novoToken);
       setNome(nomeUsuario);
       setOrganizationId(novaOrganizationId || "");
+      setEmailVerified(emailVerificadoResposta);
       if (redirecionar) navigateRef.current("/dashboard");
     },
     []
@@ -63,13 +78,24 @@ export function AuthProvider({ children }) {
     setNome(novoNome);
   }, []);
 
+    // Fase 8.1 (Bloco 1): sincroniza o contexto/localStorage logo após a
+  // confirmação de e-mail (POST /verificar-email bem-sucedido), sem exigir
+  // novo login — token, nome e organizationId não são tocados. Se não houver
+  // sessão autenticada no momento, é um no-op seguro (nada para sincronizar).
+  const marcarEmailVerificado = useCallback(() => {
+    localStorage.setItem("emailVerified", "true");
+    setEmailVerified(true);
+  }, []);
+
   const logout = useCallback(() => {
     localStorage.removeItem("token");
     localStorage.removeItem("nome");
     localStorage.removeItem("organizationId");
+    localStorage.removeItem("emailVerified");
     setToken(null);
     setNome("");
     setOrganizationId("");
+    setEmailVerified(true);
     navigateRef.current("/");
   }, []);
 
@@ -79,10 +105,12 @@ export function AuthProvider({ children }) {
         token,
         nome,
         organizationId,
+        emailVerified,
         login,
         logout,
         trocarOrganizacao,
         atualizarNome,
+        marcarEmailVerificado,
         autenticado: !!token,
       }}
     >

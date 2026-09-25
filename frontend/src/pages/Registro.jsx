@@ -44,7 +44,12 @@ export default function Registro() {
     setCarregando(true);
     try {
       const resposta = await api.post("/registro", { nome, email, senha });
-      login(resposta.data.token, resposta.data.nome, resposta.data.organizationId);
+      const { token, nome: nomeResposta, organizationId, emailVerified } = resposta.data;
+      // Fase 8.1: assumimos controle explícito da navegação (redirecionar:
+      // false) para poder encaminhar quem ainda não confirmou o e-mail para
+      // a tela de confirmação, em vez do dashboard direto.
+      login(token, nomeResposta, organizationId, { redirecionar: false, emailVerified });
+      navigate(emailVerified ? "/dashboard" : "/confirme-seu-email");
     } catch (err) {
       setErro(err.response?.data?.erro || "Erro ao criar conta. Tente novamente.");
     } finally {

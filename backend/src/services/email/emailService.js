@@ -2,18 +2,10 @@ const env = require("../../config/env");
 const resendProvider = require("./providers/resendProvider");
 const { renderResetSenha } = require("./templates/resetSenha");
 const { renderConvite } = require("./templates/convite");
+const { renderVerificacaoEmail } = require("./templates/verificacaoEmail");
 
-// Registro de providers disponíveis. Trocar de provedor é: (1) criar um
-// arquivo em providers/ seguindo o mesmo contrato (enviar({to, subject, html})),
-// (2) registrar aqui, (3) mudar EMAIL_PROVIDER no .env. Nenhum outro arquivo
-// do projeto precisa mudar.
 const PROVIDERS = {
   resend: resendProvider,
-  // sendgrid: require("./providers/sendgridProvider"),
-  // ses:      require("./providers/sesProvider"),
-  // mailgun:  require("./providers/mailgunProvider"),
-  // postmark: require("./providers/postmarkProvider"),
-  // smtp:     require("./providers/smtpProvider"),
 };
 
 function obterProvider() {
@@ -26,8 +18,6 @@ function obterProvider() {
   return provider;
 }
 
-// Única função que o resto do app (auth.service.js) conhece.
-// Não recebe HTML nem detalhes de provider — só o essencial do domínio.
 async function enviarResetSenha({ to, nome, link }) {
   const { assunto, html } = renderResetSenha({ nome, link });
   const provider = obterProvider();
@@ -40,4 +30,10 @@ async function enviarConvite({ to, nomeOrganizacao, nomeConvidante, link }) {
   await provider.enviar({ to, subject: assunto, html });
 }
 
-module.exports = { enviarResetSenha, enviarConvite };
+async function enviarVerificacaoEmail({ to, nome, link }) {
+  const { assunto, html } = renderVerificacaoEmail({ nome, link });
+  const provider = obterProvider();
+  await provider.enviar({ to, subject: assunto, html });
+}
+
+module.exports = { enviarResetSenha, enviarConvite, enviarVerificacaoEmail };

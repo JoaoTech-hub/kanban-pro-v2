@@ -25,6 +25,13 @@ class ForbiddenError extends AppError {
   }
 }
 
+class EmailNaoVerificadoError extends ForbiddenError {
+  constructor(message = "Confirme seu e-mail para acessar os dados da sua organização.") {
+    super(message);
+    this.codigo = "EMAIL_NAO_VERIFICADO";
+  }
+}
+
 class UnauthorizedError extends AppError {
   constructor(message = "Não autenticado") {
     super(message, 401);
@@ -42,6 +49,7 @@ module.exports = {
   NotFoundError,
   ConflictError,
   ForbiddenError,
+  EmailNaoVerificadoError,
   UnauthorizedError,
   PlanLimitError,
 };

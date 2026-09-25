@@ -1,19 +1,12 @@
 const organizationRepository = require("../repositories/organization.repository");
 const organizationMemberRepository = require("../repositories/organizationMember.repository");
 const { NotFoundError, ForbiddenError } = require("../shared/errors/AppError");
+const { garantirEmailVerificado } = require("../shared/emailVerificationGuard");
 
-// Roda DEPOIS do middleware `autenticar` (precisa de req.usuarioId já definido).
-// Única fonte de verdade da organização ativa: o parâmetro :organizationId da URL.
-// Não existe mais header paralelo — evita qualquer inconsistência entre duas fontes de dado.
-//
-// Caminho feliz (a esmagadora maioria das requisições): 1 única consulta com
-// JOIN, trazendo o vínculo e a organização juntos — antes eram 2 consultas
-// separadas sempre. A segunda consulta só acontece no caminho de erro (raro),
-// e só para decidir a mensagem certa (organização inexistente vs. sem
-// vínculo) — preserva exatamente o mesmo contrato de antes (status e
-// mensagem), só sem pagar o custo extra quando dá tudo certo.
 async function requireOrganization(req, res, next) {
   try {
+    garantirEmailVerificado(req.user);
+
     const { organizationId } = req.params;
 
     if (!organizationId) {

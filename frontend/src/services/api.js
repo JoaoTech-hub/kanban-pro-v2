@@ -33,6 +33,7 @@ api.interceptors.response.use(
       localStorage.removeItem("token");
       localStorage.removeItem("nome");
       localStorage.removeItem("organizationId");
+      localStorage.removeItem("emailVerified");
       if (window.location.pathname !== "/") {
         window.location.href = "/";
       }

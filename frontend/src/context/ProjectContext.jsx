@@ -8,7 +8,7 @@ import api from "../services/api";
 const ProjectContext = createContext(null);
 
 export function ProjectProvider({ children }) {
-  const { organizationId, trocarOrganizacao, logout } = useAuth();
+  const { organizationId, emailVerified, trocarOrganizacao, logout } = useAuth();
 
   // Disparado por useProjetos.js só quando a checagem de vínculo com a
   // organização ativa falha (403/404 na listagem de projetos da própria
@@ -39,8 +39,17 @@ export function ProjectProvider({ children }) {
   const { carregar, ...resto } = useProjetos(organizationId, handleOrganizacaoInvalida);
 
   useEffect(() => {
-    if (organizationId) carregar();
-  }, [organizationId, carregar]);
+    // Fase 8.1 (correção de auditoria): enquanto o e-mail não estiver
+    // verificado, o backend responde 403 EMAIL_NAO_VERIFICADO para
+    // qualquer rota organization-scoped (ver requireOrganization no
+    // backend) — carregar aqui só serviria para acionar
+    // handleOrganizacaoInvalida indevidamente (ela foi desenhada para
+    // token adulterado/organização removida, não para e-mail pendente).
+    // A forma correta é simplesmente não disparar o carregamento
+    // automático enquanto isso, e deixar carregar() disponível para
+    // quando organizationId && emailVerified voltarem a ser verdadeiros.
+    if (organizationId && emailVerified) carregar();
+  }, [organizationId, emailVerified, carregar]);
 
   const valor = { ...resto, carregar };
 

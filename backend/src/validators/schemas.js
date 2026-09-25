@@ -84,6 +84,10 @@ const redefinirSenhaSchema = z.object({
   novaSenha: senhaForteSchema,
 });
 
+const verificarEmailSchema = z.object({
+  token: z.string().min(10, "Token inválido"),
+});
+
 // "owner" nunca é um valor aceito vindo do client — conceder owner por
 // convite não é suportado (ver shared/authorization.js, garantirPodeAtribuirRole).
 const conviteSchema = z.object({
@@ -144,6 +148,7 @@ module.exports = {
   senhaSchema,
   esqueciSenhaSchema,
   redefinirSenhaSchema,
+  verificarEmailSchema,
   paginacaoQuerySchema,
   conviteSchema,
   alterarRoleSchema,
