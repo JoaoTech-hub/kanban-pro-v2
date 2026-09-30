@@ -1,10 +1,11 @@
 import { useState } from "react";
-import { useNavigate, useLocation } from "react-router-dom";
+import { Navigate, useNavigate, useLocation } from "react-router-dom";
 import api from "../services/api";
 import { useAuth } from "../context/AuthContext";
 import { useToast } from "../context/ToastContext";
 import { useOrganizacoes } from "../hooks/useOrganizacoes";
 import Brandmark from "../components/UI/Brandmark";
+import GoogleAuthButton from "../components/GoogleAuthButton";
 import {
   PageWrapper,
   Card,
@@ -14,6 +15,7 @@ import {
   SubmitButton,
   ErrorMsg,
   FooterLink,
+  Divider,
 } from "../styles/AuthStyles";
 
 export default function Login() {
@@ -21,13 +23,26 @@ export default function Login() {
   const [senha, setSenha] = useState("");
   const [erro, setErro] = useState("");
   const [carregando, setCarregando] = useState(false);
-  const { login, trocarOrganizacao } = useAuth();
+  const { login, trocarOrganizacao, autenticado } = useAuth();
   const { carregar: carregarOrganizacoes } = useOrganizacoes();
   const { showToast } = useToast();
   const navigate = useNavigate();
   const location = useLocation();
 
   const conviteToken = location.state?.conviteToken;
+
+  // Se já existe uma sessão válida (token sobrevivendo no localStorage de
+  // uma aba fechada sem "Sair", por exemplo), não faz sentido mostrar o
+  // formulário de login — e mais importante, evita que os Providers globais
+  // (Organizations/Project/Team/Kanban) fiquem buscando dados da conta
+  // antiga em segundo plano enquanto essa tela está visível, o que causava
+  // um "flash" dos dados da conta anterior ao logar com uma conta diferente
+  // logo em seguida. Exceção: o fluxo de aceite de convite explicitamente
+  // permite logar como uma conta diferente da que já está autenticada,
+  // então esse caso não é redirecionado.
+  if (autenticado && !conviteToken) {
+    return <Navigate to="/dashboard" replace />;
+  }
 
   async function entrar(e) {
     e.preventDefault();
@@ -108,6 +123,13 @@ export default function Login() {
             {carregando ? "Entrando..." : "Entrar"}
           </SubmitButton>
         </form>
+
+        {!conviteToken && (
+          <>
+            <Divider>ou</Divider>
+            <GoogleAuthButton text="signin_with" />
+          </>
+        )}
 
         <FooterLink>
           <button type="button" onClick={() => navigate("/esqueci-senha")}>

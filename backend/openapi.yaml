@@ -113,6 +113,55 @@ paths:
           content:
             application/json: { schema: { $ref: "#/components/schemas/Erro" } }
 
+    /auth/google:
+    post:
+      tags: [Autenticação]
+      summary: Autentica (ou cria conta) via Google
+      description: >
+        Recebe o ID Token (JWT) emitido pelo Google Identity Services no
+        navegador do usuário e o valida contra as chaves públicas do Google
+        — nunca confia em dados soltos que o client poderia enviar (e-mail,
+        nome). O e-mail só é aceito como verificado se o próprio Google
+        também o reportar como verificado (`email_verified`).
+
+
+        Resolução da conta, nesta ordem: (1) se já existe um usuário com
+        este `googleId` (sub do token), loga nele; (2) senão, se já existe
+        uma conta com este e-mail (tipicamente criada por e-mail/senha),
+        vincula o `googleId` a ela — sem tocar na senha existente, que
+        continua funcionando normalmente; (3) senão, cria uma conta nova
+        junto com uma organização (plano Free), como owner, igual ao
+        `/registro` tradicional. Em qualquer um dos três casos, o usuário
+        sai desta chamada com `emailVerified: true`, já que o Google
+        garantiu a posse do e-mail.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [idToken]
+              properties:
+                idToken:
+                  type: string
+                  minLength: 10
+                  description: ID Token (JWT) devolvido pelo Google Identity Services no navegador.
+      responses:
+        "200":
+          description: Login (ou criação de conta) via Google concluído com sucesso.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AuthResposta" }
+        "400": { $ref: "#/components/responses/ErroValidacao" }
+        "401":
+          description: >
+            Token do Google inválido, expirado, ou emitido para outra
+            audiência (`aud` diferente do client ID configurado); ou o
+            e-mail da conta Google ainda não foi verificado pelo Google.
+          content:
+            application/json: { schema: { $ref: "#/components/schemas/Erro" } }          
+
   /esqueci-senha:
     post:
       tags: [Autenticação]
@@ -1130,12 +1179,19 @@ components:
           type: string
           example: "Mensagem descrevendo o que deu errado."
 
-    AuthResposta:
-      type: object
-      properties:
-        token: { type: string, description: "JWT a ser enviado em Authorization: Bearer <token>." }
-        nome: { type: string }
-        organizationId: { type: string, format: uuid }
+  AuthResposta:
+    type: object
+    properties:
+      token: { type: string, description: "JWT a ser enviado em Authorization: Bearer <token>." }
+      nome: { type: string }
+      organizationId: { type: string, format: uuid }
+      emailVerified:
+        type: boolean
+        description: >
+          Se o e-mail já está confirmado. Contas criadas via /auth/google
+          sempre chegam com true (o Google já garantiu a posse do
+          e-mail); contas criadas via /registro chegam com false até o
+          e-mail ser confirmado pelo link enviado (ver /verificar-email).
 
     OrganizacaoResumo:
       type: object

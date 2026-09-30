@@ -1,6 +1,6 @@
 import { describe, test, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter, Routes, Route } from "react-router-dom";
 import { ThemeProvider } from "styled-components";
 import Login from "../pages/Login";
 import { lightTheme } from "../styles/theme";
@@ -26,6 +26,14 @@ vi.mock("../context/ToastContext", () => ({
 vi.mock("../hooks/useOrganizacoes", () => ({
   useOrganizacoes: vi.fn(),
 }));
+// Etapa 3 (frontend do Google Login): GoogleAuthButton é tratado como caixa
+// preta aqui — este arquivo testa Login.jsx isoladamente (sem ThemeProvider
+// do app nem GoogleOAuthProvider por perto), e o próprio componente real já
+// tem cobertura dedicada. Sem esse mock, o teste ficaria acoplado a
+// VITE_GOOGLE_CLIENT_ID estar vazio no ambiente de teste.
+vi.mock("../components/GoogleAuthButton", () => ({
+  default: () => null,
+}));
 
 const mockNavigate = vi.fn();
 vi.mock("react-router-dom", async (importOriginal) => {
@@ -38,6 +46,25 @@ function renderPagina(initialEntries = ["/"]) {
     <MemoryRouter initialEntries={initialEntries}>
       <ThemeProvider theme={lightTheme}>
         <Login />
+      </ThemeProvider>
+    </MemoryRouter>
+  );
+}
+
+// <Navigate> (redirecionamento declarativo) usa a própria referência interna
+// de useNavigate do react-router, que não passa pelo vi.mock acima — esse
+// mock só troca o que a PÁGINA importa diretamente. Pra observar um
+// redirecionamento de <Navigate>, precisamos de rotas de verdade e checar
+// o que fica renderizado, em vez de checar se mockNavigate foi chamado
+// (mesma estratégia já usada em ConfirmeSeuEmail.test.jsx, Fase 8.1).
+function renderPaginaComRotas(initialEntries = ["/"]) {
+  return render(
+    <MemoryRouter initialEntries={initialEntries}>
+      <ThemeProvider theme={lightTheme}>
+        <Routes>
+          <Route path="/" element={<Login />} />
+          <Route path="/dashboard" element={<div>Página do Dashboard</div>} />
+        </Routes>
       </ThemeProvider>
     </MemoryRouter>
   );
@@ -169,6 +196,24 @@ describe("Login — integração com emailVerified (Fase 8.1)", () => {
     expect(showToast).toHaveBeenCalledWith("Convite aceito com sucesso!", "sucesso");
     expect(mockNavigate).toHaveBeenCalledWith("/dashboard");
     expect(mockNavigate).not.toHaveBeenCalledWith("/confirme-seu-email");
+  });
+
+  test("[novo] usuário já autenticado (sessão sobrevivente no localStorage) é redirecionado para /dashboard sem mostrar o formulário", () => {
+    useAuth.mockReturnValue({ login, trocarOrganizacao, autenticado: true });
+
+    renderPaginaComRotas();
+
+    expect(screen.getByText("Página do Dashboard")).toBeInTheDocument();
+    expect(screen.queryByPlaceholderText("E-mail")).not.toBeInTheDocument();
+  });
+
+  test("[novo] usuário já autenticado COM conviteToken não é redirecionado — pode logar como outra conta pra aceitar o convite", () => {
+    useAuth.mockReturnValue({ login, trocarOrganizacao, autenticado: true });
+
+    renderPaginaComRotas([{ pathname: "/", state: { conviteToken: "token-convite-123" } }]);
+
+    expect(screen.queryByText("Página do Dashboard")).not.toBeInTheDocument();
+    expect(screen.getByPlaceholderText("E-mail")).toBeInTheDocument();
   });
 
   test("[regressão] links 'Esqueci minha senha' e 'Criar conta' continuam navegando corretamente", () => {

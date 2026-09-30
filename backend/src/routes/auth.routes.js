@@ -2,6 +2,7 @@ const { Router } = require("express");
 const {
   registrar,
   login,
+  loginGoogle,
   esqueciSenha,
   redefinirSenha,
   verificarEmail,
@@ -10,6 +11,7 @@ const {
 const {
   registroSchema,
   loginSchema,
+  googleLoginSchema,
   esqueciSenhaSchema,
   redefinirSenhaSchema,
   verificarEmailSchema,
@@ -22,6 +24,7 @@ const router = Router();
 
 router.post("/registro", authLimiter, validar(registroSchema), registrar);
 router.post("/login", authLimiter, validar(loginSchema), login);
+router.post("/auth/google", authLimiter, validar(googleLoginSchema), loginGoogle);
 router.post("/esqueci-senha", authLimiter, validar(esqueciSenhaSchema), esqueciSenha);
 router.post("/redefinir-senha", authLimiter, validar(redefinirSenhaSchema), redefinirSenha);
 router.post("/verificar-email", authLimiter, validar(verificarEmailSchema), verificarEmail);

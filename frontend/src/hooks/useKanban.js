@@ -67,6 +67,23 @@ export function useKanban(organizationId, projectId) {
   const [carregando, setCarregando] = useState(false);
   const [erro, setErro] = useState(null);
 
+  // Descarta o quadro em memória DURANTE o render quando a organização
+  // muda (logout, login com outra conta, troca de organização) — mesmo
+  // padrão de useProjetos.js para o projectId (docs do React: "Adjusting
+  // state when a prop changes"). Sem isso, este hook (montado uma única
+  // vez acima do <Routes>, via KanbanProvider) continuava guardando as
+  // colunas/cards da conta anterior: carregar() só sobrescreve quando
+  // consegue buscar, e retorna sem fazer nada se projectId for nulo (caso
+  // de uma conta nova, ainda sem projeto). Resultado: o quadro da conta
+  // antiga aparecia por um instante para a conta nova.
+  const [organizationIdAnterior, setOrganizationIdAnterior] = useState(organizationId);
+  if (organizationId !== organizationIdAnterior) {
+    setOrganizationIdAnterior(organizationId);
+    setCards([]);
+    setColunas([]);
+    setErro(null);
+  }
+
   const base = `/organizations/${organizationId}/projects/${projectId}`;
 
   const carregar = useCallback(async () => {

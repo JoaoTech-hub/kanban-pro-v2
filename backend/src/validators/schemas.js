@@ -21,6 +21,15 @@ const loginSchema = z.object({
   senha: z.string().min(1, "Informe a senha"),
 });
 
+// Google Login (Etapa 1): o frontend (numa etapa futura) vai usar o Google
+// Identity Services, que devolve um "credential" — um ID Token JWT assinado
+// pelo Google — direto no navegador. O backend só recebe esse token bruto e
+// o valida com a própria biblioteca do Google (nunca confia em campos soltos
+// tipo e-mail/nome enviados separadamente pelo client).
+const googleLoginSchema = z.object({
+  idToken: z.string().min(10, "Token do Google inválido"),
+});
+
 const colunaSchema = z.object({
   nome: z.string().trim().min(1, "O nome da coluna é obrigatório").max(80),
 });
@@ -136,6 +145,7 @@ function validar(schema) {
 module.exports = {
   registroSchema,
   loginSchema,
+  googleLoginSchema,
   colunaSchema,
   cardSchema,
   moverCardSchema,

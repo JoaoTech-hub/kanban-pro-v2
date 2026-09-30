@@ -1,8 +1,9 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { Navigate, useNavigate } from "react-router-dom";
 import api from "../services/api";
 import { useAuth } from "../context/AuthContext";
 import Brandmark from "../components/UI/Brandmark";
+import GoogleAuthButton from "../components/GoogleAuthButton";
 import {
   PageWrapper,
   Card,
@@ -12,6 +13,7 @@ import {
   SubmitButton,
   ErrorMsg,
   FooterLink,
+  Divider,
 } from "../styles/AuthStyles";
 
 export default function Registro() {
@@ -21,8 +23,16 @@ export default function Registro() {
   const [confirmarSenha, setConfirmarSenha] = useState("");
   const [erro, setErro] = useState("");
   const [carregando, setCarregando] = useState(false);
-  const { login } = useAuth();
+  const { login, autenticado } = useAuth();
   const navigate = useNavigate();
+
+  // Mesmo motivo do guard em Login.jsx: uma sessão válida sobrevivendo no
+  // localStorage (aba fechada sem "Sair") não deve deixar a tela de
+  // registro visível com os Providers globais ainda buscando dados da
+  // conta antiga em segundo plano.
+  if (autenticado) {
+    return <Navigate to="/dashboard" replace />;
+  }
 
   async function registrar(e) {
     e.preventDefault();
@@ -102,6 +112,9 @@ export default function Registro() {
             {carregando ? "Criando conta..." : "Criar conta"}
           </SubmitButton>
         </form>
+
+        <Divider>ou</Divider>
+        <GoogleAuthButton text="signup_with" />
 
         <FooterLink>
           Já tem conta?{" "}

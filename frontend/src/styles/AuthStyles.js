@@ -115,3 +115,22 @@ export const FooterLink = styled.p`
     }
   }
 `;
+
+// Separador "ou" entre o formulário tradicional e o login com Google
+// (Etapa 3 — frontend do Google Login).
+export const Divider = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: ${({ theme }) => theme.text};
+  opacity: 0.5;
+  font-size: 13px;
+
+  &::before,
+  &::after {
+    content: "";
+    flex: 1;
+    height: 1px;
+    background: ${({ theme }) => theme.border};
+  }
+`;

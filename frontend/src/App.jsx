@@ -1,6 +1,7 @@
 import { Suspense, lazy } from "react";
 import { Routes, Route } from "react-router-dom";
 import { ThemeProvider as StyledThemeProvider } from "styled-components";
+import { GoogleOAuthProvider } from "@react-oauth/google";
 
 import { AuthProvider } from "./context/AuthContext";
 import { ThemeProvider, useTheme } from "./context/ThemeContext";
@@ -33,6 +34,22 @@ const Configuracoes = lazy(() => import("./pages/Configuracoes"));
 const Equipe = lazy(() => import("./pages/Equipe"));
 const AceitarConvite = lazy(() => import("./pages/AceitarConvite"));
 
+// Etapa 3 (frontend do Google Login): string vazia quando não configurada —
+// GoogleAuthButton já trata esse caso (não renderiza nada), então não há
+// problema em passar clientId="" pro provider aqui.
+const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID;
+
+// GoogleOAuthProvider injeta um <script src="https://accounts.google.com/gsi/client">
+// assim que monta, independente do clientId estar preenchido ou de haver
+// algum botão do Google visível na tela. Por isso ele só envolve as duas
+// rotas que realmente podem mostrar o botão (login e registro) — não o app
+// inteiro — pra não carregar esse script (nem pagar esse custo) em toda
+// página autenticada (dashboard, equipe, etc.) ou em teste que monta o
+// <App/> completo sem precisar de nada disso.
+function ComGoogleOAuth({ children }) {
+  return <GoogleOAuthProvider clientId={GOOGLE_CLIENT_ID}>{children}</GoogleOAuthProvider>;
+}
+
 // Componente interno para acessar o ThemeContext
 function ThemedApp() {
   const { dark } = useTheme();
@@ -49,8 +66,22 @@ function ThemedApp() {
                 <AppShell>
                   <Suspense fallback={<PageLoader />}>
                     <Routes>
-                      <Route path="/" element={<Login />} />
-                      <Route path="/registro" element={<Registro />} />
+                      <Route
+                        path="/"
+                        element={
+                          <ComGoogleOAuth>
+                            <Login />
+                          </ComGoogleOAuth>
+                        }
+                      />
+                      <Route
+                        path="/registro"
+                        element={
+                          <ComGoogleOAuth>
+                            <Registro />
+                          </ComGoogleOAuth>
+                        }
+                      />
                       <Route path="/esqueci-senha" element={<EsqueciSenha />} />
                       <Route path="/redefinir-senha" element={<RedefinirSenha />} />
                       <Route path="/convites/:token" element={<AceitarConvite />} />

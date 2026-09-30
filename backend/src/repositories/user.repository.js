@@ -8,9 +8,16 @@ function findById(id) {
   return prisma.user.findUnique({ where: { id } });
 }
 
-function create({ name, email, passwordHash, emailVerified }, client = prisma) {
+// Google Login (Etapa 1): busca por googleId é o caminho "rápido" — cobre o
+// caso comum de quem já logou com Google antes. Como a coluna é nullable +
+// unique, nunca há colisão entre contas tradicionais (googleId null).
+function findByGoogleId(googleId) {
+  return prisma.user.findUnique({ where: { googleId } });
+}
+
+function create({ name, email, passwordHash = null, googleId = null, emailVerified }, client = prisma) {
   return client.user.create({
-    data: { name, email, passwordHash, emailVerified },
+    data: { name, email, passwordHash, googleId, emailVerified },
   });
 }
 
@@ -29,11 +36,25 @@ function updateEmailVerified(id, emailVerified) {
   return prisma.user.update({ where: { id }, data: { emailVerified } });
 }
 
+// Google Login (Etapa 1): vincula um googleId a uma conta já existente
+// (criada originalmente por e-mail/senha). Não mexe em passwordHash — a
+// conta continua podendo logar dos dois jeitos depois disso. Também
+// aproveita pra marcar o e-mail como verificado, já que o Google confirmou
+// a posse do e-mail (evita depender do fluxo de verificação por link).
+function linkGoogleId(id, googleId) {
+  return prisma.user.update({
+    where: { id },
+    data: { googleId, emailVerified: true },
+  });
+}
+
 module.exports = {
   findByEmail,
   findById,
+  findByGoogleId,
   create,
   updateName,
   updatePasswordHash,
   updateEmailVerified,
+  linkGoogleId,
 };

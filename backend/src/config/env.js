@@ -17,6 +17,11 @@ const envSchema = z
     EMAIL_PROVIDER: z.string().default("resend"),
     RESEND_API_KEY: z.string().optional(),
     EMAIL_FROM: z.string().optional(),
+    // Google Login (Etapa 1): opcional por enquanto — o endpoint /auth/google
+    // ainda não é chamado por nenhum frontend nesta etapa. Fica obrigatória
+    // na prática assim que o botão "Continuar com Google" for habilitado,
+    // mas isso será decidido/validado numa etapa futura, não aqui.
+    GOOGLE_CLIENT_ID: z.string().optional(),
   })
   .superRefine((data, ctx) => {
     if (data.NODE_ENV === "production" && !data.FRONTEND_URL) {

@@ -18,6 +18,15 @@ async function login(req, res, next) {
   }
 }
 
+async function loginGoogle(req, res, next) {
+  try {
+    const resultado = await authService.loginComGoogle(req.body);
+    res.json(resultado);
+  } catch (err) {
+    next(err);
+  }
+}
+
 async function esqueciSenha(req, res, next) {
   try {
     await authService.solicitarResetSenha(req.body.email);
@@ -57,6 +66,7 @@ async function reenviarVerificacao(req, res, next) {
 module.exports = {
   registrar,
   login,
+  loginGoogle,
   esqueciSenha,
   redefinirSenha,
   verificarEmail,

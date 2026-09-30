@@ -1163,11 +1163,29 @@ describe("Colunas e Cards", () => {
           const colunaAinda = await prisma.coluna.findUnique({ where: { id: colunaAlvoId } });
           expect(colunaAinda).toBeNull();
         } else {
-          // O mover() venceu a corrida — o card precisa ter sido
-          // efetivamente movido, com FK válida (a coluna existia no
-          // momento em que o card foi gravado nela).
-          const card = await prisma.card.findUnique({ where: { id: cardId } });
-          expect(card.colunaId).toBe(colunaAlvoId);
+          // O mover() venceu a corrida pelo lock da coluna destino — o card
+          // foi de fato movido com FK válida naquele instante (a coluna
+          // ainda existia quando o update aconteceu). Mas, pelo mesmo motivo
+          // do teste de "criar card" logo abaixo, vencer esse lock primeiro
+          // não impede que a exclusão (que ficou bloqueada esperando o
+          // mesmo lock) prossiga assim que o mover() commita, apagando a
+          // coluna e, em cascata (onDelete: Cascade em Card.coluna), o
+          // próprio card junto — mesmo ele tendo acabado de ser movido pra
+          // lá com sucesso um instante antes. Os dois desfechos (coluna e
+          // card ainda lá; ou os dois sumidos em cascata) são igualmente
+          // válidos — o que nunca pode acontecer é um card órfão apontando
+          // pra uma coluna inexistente.
+          const [colunaAinda, cardAinda] = await Promise.all([
+            prisma.coluna.findUnique({ where: { id: colunaAlvoId } }),
+            prisma.card.findUnique({ where: { id: cardId } }),
+          ]);
+
+          if (colunaAinda) {
+            expect(cardAinda).not.toBeNull();
+            expect(cardAinda.colunaId).toBe(colunaAlvoId);
+          } else {
+            expect(cardAinda).toBeNull();
+          }
         }
       }
     );
@@ -1200,8 +1218,28 @@ describe("Colunas e Cards", () => {
         if (respostaCriar.status === 404) {
           expect(respostaCriar.body.erro).toMatch(/coluna/i);
         } else {
-          const card = await prisma.card.findUnique({ where: { id: respostaCriar.body.id } });
-          expect(card.colunaId).toBe(colunaAlvoId);
+          // Mesma corrida da Fase C já vista em "criar coluna num projeto
+          // sendo excluído": o create() pode vencer o lock de linha da
+          // coluna primeiro (FOR UPDATE em proximaOrdem), commitar o card
+          // com FK válida naquele instante, e retornar 201 — e só DEPOIS o
+          // DELETE da coluna (que ficou bloqueado esperando esse mesmo
+          // lock) ser liberado e prosseguir, apagando a coluna e, em
+          // cascata (onDelete: Cascade em Card.coluna), o próprio card
+          // recém-criado junto. 201 e "o card sumiu logo depois" são dois
+          // resultados igualmente válidos da mesma corrida — o que nunca
+          // pode acontecer é um card órfão apontando pra uma coluna que não
+          // existe mais.
+          const [colunaAinda, cardAinda] = await Promise.all([
+            prisma.coluna.findUnique({ where: { id: colunaAlvoId } }),
+            prisma.card.findUnique({ where: { id: respostaCriar.body.id } }),
+          ]);
+
+          if (colunaAinda) {
+            expect(cardAinda).not.toBeNull();
+            expect(cardAinda.colunaId).toBe(colunaAlvoId);
+          } else {
+            expect(cardAinda).toBeNull();
+          }
         }
       }
     );
@@ -1233,8 +1271,40 @@ describe("Colunas e Cards", () => {
         if (respostaCriarColuna.status === 404) {
           expect(respostaCriarColuna.body.erro).toMatch(/projeto/i);
         } else {
-          const projetoAinda = await prisma.project.findUnique({ where: { id: projetoAlvo.id } });
-          expect(projetoAinda).not.toBeNull();
+          // O create() venceu a corrida pelo lock de linha do projeto
+          // (SELECT ... FOR UPDATE em proximaOrdem) e commitou a coluna
+          // enquanto o projeto ainda existia — por isso a API respondeu 201
+          // corretamente, sem nenhuma FK violada nesse instante.
+          //
+          // Só que "vencer o lock primeiro" não significa "vencer a corrida
+          // por completo": o DELETE do projeto (que ficou bloqueado
+          // esperando esse mesmo lock) é liberado assim que o create()
+          // commita, e prossegue normalmente — porque nada na linha do
+          // projeto em si mudou, só um filho novo (a coluna) foi inserido.
+          // Esse DELETE então remove o projeto e, em cascata
+          // (onDelete: Cascade no schema), a própria coluna recém-criada
+          // junto. Ou seja: response 201 e "o projeto sumiu um instante
+          // depois" são dois resultados igualmente válidos da mesma
+          // corrida — não uma contradição.
+          //
+          // O invariante que realmente precisa valer, e que a asserção
+          // antiga não checava, é o de integridade referencial: nunca pode
+          // sobrar uma coluna "órfã" apontando pra um projectId que não
+          // existe mais. Ou o projeto ainda existe e a coluna está
+          // corretamente vinculada a ele, ou o projeto foi removido e a
+          // cascata removeu a coluna junto — qualquer terceira combinação
+          // seria dado corrompido.
+          const [projetoAinda, colunaAinda] = await Promise.all([
+            prisma.project.findUnique({ where: { id: projetoAlvo.id } }),
+            prisma.coluna.findUnique({ where: { id: respostaCriarColuna.body.id } }),
+          ]);
+
+          if (projetoAinda) {
+            expect(colunaAinda).not.toBeNull();
+            expect(colunaAinda.projectId).toBe(projetoAlvo.id);
+          } else {
+            expect(colunaAinda).toBeNull();
+          }
         }
       }
     );

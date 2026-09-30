@@ -1,6 +1,6 @@
 import { describe, test, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter, Routes, Route } from "react-router-dom";
 import { ThemeProvider } from "styled-components";
 import Registro from "../pages/Registro";
 import { lightTheme } from "../styles/theme";
@@ -18,6 +18,12 @@ vi.mock("../services/api", () => ({
 vi.mock("../context/AuthContext", () => ({
   useAuth: vi.fn(),
 }));
+// Etapa 3 (frontend do Google Login): mesma razão do Login.test.jsx — trata
+// GoogleAuthButton como caixa preta pra este teste não depender de
+// VITE_GOOGLE_CLIENT_ID nem precisar montar ThemeProvider/GoogleOAuthProvider.
+vi.mock("../components/GoogleAuthButton", () => ({
+  default: () => null,
+}));
 
 const mockNavigate = vi.fn();
 vi.mock("react-router-dom", async (importOriginal) => {
@@ -30,6 +36,21 @@ function renderPagina() {
     <MemoryRouter>
       <ThemeProvider theme={lightTheme}>
         <Registro />
+      </ThemeProvider>
+    </MemoryRouter>
+  );
+}
+
+// Mesmo motivo do Login.test.jsx: <Navigate> não passa pelo vi.mock de
+// useNavigate, então checamos o redirecionamento observando a rota real.
+function renderPaginaComRotas() {
+  return render(
+    <MemoryRouter initialEntries={["/registro"]}>
+      <ThemeProvider theme={lightTheme}>
+        <Routes>
+          <Route path="/registro" element={<Registro />} />
+          <Route path="/dashboard" element={<div>Página do Dashboard</div>} />
+        </Routes>
       </ThemeProvider>
     </MemoryRouter>
   );
@@ -154,6 +175,15 @@ describe("Registro — integração com emailVerified (Fase 8.1)", () => {
     expect(await screen.findByText("E-mail já cadastrado")).toBeInTheDocument();
     expect(login).not.toHaveBeenCalled();
     expect(mockNavigate).not.toHaveBeenCalled();
+  });
+
+  test("[novo] usuário já autenticado (sessão sobrevivente no localStorage) é redirecionado para /dashboard sem mostrar o formulário", () => {
+    useAuth.mockReturnValue({ login, autenticado: true });
+
+    renderPaginaComRotas();
+
+    expect(screen.getByText("Página do Dashboard")).toBeInTheDocument();
+    expect(screen.queryByPlaceholderText("Nome")).not.toBeInTheDocument();
   });
 
   test("[regressão] link 'Entrar' continua navegando para a tela de login", () => {

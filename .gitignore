@@ -20,6 +20,7 @@ build/
 .env.*
 !.env.example
 *.local
+.agents
 
 # Banco SQLite
 kanban.db
