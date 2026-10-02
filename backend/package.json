@@ -6,7 +6,8 @@
   "scripts": {
     "start": "node server.js",
     "dev": "node --watch server.js",
-    "test": "jest --runInBand"
+    "test": "jest --runInBand",
+    "test:safety": "node --test tests/testDatabaseSafety.safety.cjs"
   },
   "jest": {
     "setupFiles": [

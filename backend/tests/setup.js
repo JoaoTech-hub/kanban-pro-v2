@@ -1,6 +1,6 @@
-const path = require("path");
+const { carregarAmbienteTeste } = require("./helpers/loadTestEnvironment");
 
-require("dotenv").config({ path: path.join(__dirname, "..", ".env.test") });
+carregarAmbienteTeste();
 
 process.env.NODE_ENV = "test";
 
