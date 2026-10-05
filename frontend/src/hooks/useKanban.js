@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef } from "react";
 import api from "../services/api";
 
 export function normalizarColuna(coluna) {
@@ -66,9 +66,10 @@ export function useKanban(organizationId, projectId) {
   const [colunas, setColunas] = useState([]);
   const [carregando, setCarregando] = useState(false);
   const [erro, setErro] = useState(null);
+  const geracaoCarregamento = useRef(0);
 
-  // Descarta o quadro em memória DURANTE o render quando a organização
-  // muda (logout, login com outra conta, troca de organização) — mesmo
+  // Descarta o quadro em memória DURANTE o render quando a organização ou
+  // projeto muda (logout, login com outra conta ou troca de contexto) — mesmo
   // padrão de useProjetos.js para o projectId (docs do React: "Adjusting
   // state when a prop changes"). Sem isso, este hook (montado uma única
   // vez acima do <Routes>, via KanbanProvider) continuava guardando as
@@ -76,18 +77,27 @@ export function useKanban(organizationId, projectId) {
   // consegue buscar, e retorna sem fazer nada se projectId for nulo (caso
   // de uma conta nova, ainda sem projeto). Resultado: o quadro da conta
   // antiga aparecia por um instante para a conta nova.
-  const [organizationIdAnterior, setOrganizationIdAnterior] = useState(organizationId);
-  if (organizationId !== organizationIdAnterior) {
-    setOrganizationIdAnterior(organizationId);
+  const [contextoAnterior, setContextoAnterior] = useState({ organizationId, projectId });
+  if (organizationId !== contextoAnterior.organizationId || projectId !== contextoAnterior.projectId) {
+    setContextoAnterior({ organizationId, projectId });
+    geracaoCarregamento.current += 1;
     setCards([]);
     setColunas([]);
     setErro(null);
+    setCarregando(false);
   }
 
   const base = `/organizations/${organizationId}/projects/${projectId}`;
 
   const carregar = useCallback(async () => {
     if (!organizationId || !projectId) return;
+
+    const geracaoAtual = ++geracaoCarregamento.current;
+    const contextoDaRequisicao = { organizationId, projectId };
+    const requisicaoAindaAtual = () =>
+      geracaoAtual === geracaoCarregamento.current &&
+      contextoDaRequisicao.organizationId === contextoAnterior.organizationId &&
+      contextoDaRequisicao.projectId === contextoAnterior.projectId;
 
     setCarregando(true);
     setErro(null);
@@ -96,15 +106,17 @@ export function useKanban(organizationId, projectId) {
         api.get(`${base}/colunas`),
         api.get(`${base}/cards`),
       ]);
+      if (!requisicaoAindaAtual()) return;
       setColunas(resColunas.data.map(normalizarColuna));
       setCards(resCards.data.map(normalizarCard));
     } catch (e) {
+      if (!requisicaoAindaAtual()) return;
       console.error(e);
       setErro("Falha ao carregar dados. Verifique sua conexão.");
     } finally {
-      setCarregando(false);
+      if (requisicaoAindaAtual()) setCarregando(false);
     }
-  }, [base, organizationId, projectId]);
+  }, [base, organizationId, projectId, contextoAnterior]);
 
   const moverCard = useCallback(
     async (cardId, colunaDestino, ordemDestino) => {
