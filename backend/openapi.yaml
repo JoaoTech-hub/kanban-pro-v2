@@ -139,6 +139,25 @@ paths:
           content:
             application/json: { schema: { $ref: "#/components/schemas/Erro" } }
 
+  /auth/logout:
+    post:
+      tags: [Autenticação]
+      summary: Encerra a sessão atual e revoga os JWTs do usuário
+      description: >
+        Incrementa `tokenVersion` do usuário autenticado. Como o JWT não
+        identifica uma sessão individual, todos os JWTs existentes desse
+        usuário deixam de ser aceitos; novos logins emitem tokens válidos.
+      responses:
+        "200":
+          description: Logout efetuado.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  mensagem: { type: string, example: "Logout efetuado com sucesso" }
+        "401": { $ref: "#/components/responses/NaoAutenticado" }
+
   /auth/google:
     post:
       tags: [Autenticação]

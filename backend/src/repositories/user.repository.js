@@ -32,6 +32,13 @@ function updatePasswordHash(id, passwordHash) {
   });
 }
 
+function incrementTokenVersion(id) {
+  return prisma.user.updateMany({
+    where: { id },
+    data: { tokenVersion: { increment: 1 } },
+  });
+}
+
 function updateEmailVerified(id, emailVerified) {
   return prisma.user.update({ where: { id }, data: { emailVerified } });
 }
@@ -55,6 +62,7 @@ module.exports = {
   create,
   updateName,
   updatePasswordHash,
+  incrementTokenVersion,
   updateEmailVerified,
   linkGoogleId,
 };

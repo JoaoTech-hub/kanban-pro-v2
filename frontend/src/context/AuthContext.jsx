@@ -2,6 +2,7 @@
 
 import { createContext, useContext, useState, useCallback, useRef, useLayoutEffect } from "react";
 import { useNavigate } from "react-router-dom";
+import api from "../services/api";
 
 const AuthContext = createContext(null);
 
@@ -87,16 +88,24 @@ export function AuthProvider({ children }) {
     setEmailVerified(true);
   }, []);
 
-  const logout = useCallback(() => {
-    localStorage.removeItem("token");
-    localStorage.removeItem("nome");
-    localStorage.removeItem("organizationId");
-    localStorage.removeItem("emailVerified");
-    setToken(null);
-    setNome("");
-    setOrganizationId("");
-    setEmailVerified(true);
-    navigateRef.current("/");
+  const logout = useCallback(async () => {
+    try {
+      // Envia a credencial enquanto ainda está disponível para o interceptor.
+      await api.post("/auth/logout");
+    } catch {
+      // O encerramento local deve funcionar mesmo com a API indisponível
+      // ou com um token já expirado/revogado.
+    } finally {
+      localStorage.removeItem("token");
+      localStorage.removeItem("nome");
+      localStorage.removeItem("organizationId");
+      localStorage.removeItem("emailVerified");
+      setToken(null);
+      setNome("");
+      setOrganizationId("");
+      setEmailVerified(true);
+      navigateRef.current("/");
+    }
   }, []);
 
   return (

@@ -1,7 +1,13 @@
-import { describe, test, expect, beforeEach } from "vitest";
+import { describe, test, expect, beforeEach, vi } from "vitest";
 import { render, screen, act } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { AuthProvider, useAuth } from "../context/AuthContext";
+
+vi.mock("../services/api", () => ({
+  default: { post: vi.fn() },
+}));
+
+import api from "../services/api";
 
 // Segue o padrão de KanbanContext.test.jsx: um componente consumidor simples
 // renderizado dentro do Provider real, sem mockar nada — o AuthContext não
@@ -42,6 +48,8 @@ function renderArvore() {
 describe("AuthContext — emailVerified (Fase 8.1)", () => {
   beforeEach(() => {
     localStorage.clear();
+    vi.clearAllMocks();
+    api.post.mockResolvedValue({});
   });
 
   test("sem sessão prévia no localStorage, assume emailVerified true por padrão", () => {
@@ -97,7 +105,7 @@ describe("AuthContext — emailVerified (Fase 8.1)", () => {
     expect(screen.getByTestId("token")).toHaveTextContent("tok-antigo");
   });
 
-  test("[regressão] logout() limpa emailVerified junto com o restante da sessão", () => {
+  test("[regressão] logout() limpa emailVerified junto com o restante da sessão", async () => {
     renderArvore();
 
     act(() => {
@@ -105,13 +113,51 @@ describe("AuthContext — emailVerified (Fase 8.1)", () => {
     });
     expect(screen.getByTestId("emailVerified")).toHaveTextContent("false");
 
-    act(() => {
+    await act(async () => {
       screen.getByText("logout").click();
     });
 
     expect(screen.getByTestId("emailVerified")).toHaveTextContent("true");
     expect(screen.getByTestId("token")).toHaveTextContent("null");
     expect(localStorage.getItem("emailVerified")).toBeNull();
+  });
+
+  test("logout chama a API antes de remover o token e finaliza localmente em sucesso", async () => {
+    renderArvore();
+    act(() => screen.getByText("login-verificado").click());
+    api.post.mockImplementation(async () => {
+      expect(localStorage.getItem("token")).toBe("tok-2");
+      return {};
+    });
+
+    await act(async () => screen.getByText("logout").click());
+
+    expect(api.post).toHaveBeenCalledWith("/auth/logout");
+    expect(localStorage.getItem("token")).toBeNull();
+    expect(screen.getByTestId("token")).toHaveTextContent("null");
+  });
+
+  test("logout finaliza localmente quando a API falha", async () => {
+    renderArvore();
+    act(() => screen.getByText("login-verificado").click());
+    api.post.mockRejectedValue(new Error("API indispon\u00edvel"));
+
+    await act(async () => screen.getByText("logout").click());
+
+    expect(localStorage.getItem("token")).toBeNull();
+    expect(screen.getByTestId("token")).toHaveTextContent("null");
+  });
+
+  test("logout finaliza localmente quando o JWT expirou ou j\u00e1 foi revogado (401)", async () => {
+    renderArvore();
+    act(() => screen.getByText("login-verificado").click());
+    api.post.mockRejectedValue({ response: { status: 401 } });
+
+    await act(async () => screen.getByText("logout").click());
+
+    expect(api.post).toHaveBeenCalledWith("/auth/logout");
+    expect(localStorage.getItem("token")).toBeNull();
+    expect(screen.getByTestId("token")).toHaveTextContent("null");
   });
 
   describe("marcarEmailVerificado() (Fase 8.1 — Bloco 1)", () => {

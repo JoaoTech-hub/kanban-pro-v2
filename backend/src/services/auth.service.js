@@ -130,6 +130,11 @@ async function login({ email, senha }) {
   };
 }
 
+async function logout(userId) {
+  const resultado = await userRepository.incrementTokenVersion(userId);
+  if (resultado.count === 0) throw new UnauthorizedError("N\u00e3o autenticado");
+}
+
 // Valida o ID Token emitido pelo Google Identity Services no navegador do
 // usuário. verifyIdToken confere, contra as chaves públicas do Google: a
 // assinatura, o emissor (iss), a expiração (exp) e a audiência (aud — precisa
@@ -270,6 +275,7 @@ async function redefinirSenha({ token, novaSenha }) {
 module.exports = {
   registrar,
   login,
+  logout,
   loginComGoogle,
   verificarEmail,
   reenviarVerificacao,
