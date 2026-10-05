@@ -15,9 +15,15 @@ info:
 
     **Envelope de erro:** toda resposta de erro segue o mesmo formato,
     `{ "erro": "<mensagem>" }`, com o código HTTP correspondente
-    (400/401/403/404/409/500). Esse envelope é omitido nos exemplos de
+    (400/401/403/404/409/429/500). Esse envelope é omitido nos exemplos de
     resposta abaixo para não repetir em cada endpoint — está descrito uma
     única vez no schema `Erro`, referenciado em todas as respostas de erro.
+
+
+    **Limite de requisições:** qualquer rota pode responder 429 ao atingir
+    o limite global de 100 requisições por IP em 15 minutos. Rotas de
+    autenticação e convites públicos também têm um limite específico de 10
+    requisições por IP em 15 minutos.
   version: "1.0.0"
 
 servers:
@@ -25,6 +31,8 @@ servers:
     description: Ambiente local de desenvolvimento
 
 tags:
+  - name: Sistema
+    description: Verificação de disponibilidade da API.
   - name: Autenticação
     description: Registro, login e recuperação de senha. Rotas públicas.
   - name: Convites (públicas)
@@ -50,6 +58,23 @@ security:
   - bearerAuth: []
 
 paths:
+  /:
+    get:
+      tags: [Sistema]
+      summary: Verifica se a API está disponível
+      security: []
+      responses:
+        "200":
+          description: API disponível.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, example: "OK" }
+                  sistema: { type: string, example: "Kanban API" }
+                  versao: { type: string, example: "1.0" }
+
   # ───────────────────────────── Autenticação ─────────────────────────────
   /registro:
     post:
@@ -66,16 +91,17 @@ paths:
           application/json:
             schema:
               type: object
-              required: [name, email, password]
+              required: [nome, email, senha]
               properties:
-                name: { type: string, minLength: 1, maxLength: 100 }
+                nome: { type: string, minLength: 1, maxLength: 100 }
                 email: { type: string, format: email, maxLength: 160, description: "Normalizado para minúsculas e sem espaços nas pontas." }
-                password:
+                senha:
                   type: string
-                  description: "Mínimo 8 caracteres, pelo menos 1 letra e 1 número."
+                  description: "Mínimo 8 e máximo 200 caracteres, pelo menos 1 letra e 1 número."
                   minLength: 8
+                  maxLength: 200
       responses:
-        "201":
+        "200":
           description: Conta e organização criadas com sucesso.
           content:
             application/json:
@@ -97,10 +123,10 @@ paths:
           application/json:
             schema:
               type: object
-              required: [email, password]
+              required: [email, senha]
               properties:
                 email: { type: string, format: email }
-                password: { type: string }
+                senha: { type: string, minLength: 1 }
       responses:
         "200":
           description: Login efetuado com sucesso.
@@ -113,7 +139,7 @@ paths:
           content:
             application/json: { schema: { $ref: "#/components/schemas/Erro" } }
 
-    /auth/google:
+  /auth/google:
     post:
       tags: [Autenticação]
       summary: Autentica (ou cria conta) via Google
@@ -131,9 +157,9 @@ paths:
         vincula o `googleId` a ela — sem tocar na senha existente, que
         continua funcionando normalmente; (3) senão, cria uma conta nova
         junto com uma organização (plano Free), como owner, igual ao
-        `/registro` tradicional. Em qualquer um dos três casos, o usuário
-        sai desta chamada com `emailVerified: true`, já que o Google
-        garantiu a posse do e-mail.
+        `/registro` tradicional. Contas novas criadas por esse fluxo têm
+        `emailVerified: true`. Se o login vincular uma conta local já
+        existente, o status local de verificação não é alterado.
       security: []
       requestBody:
         required: true
@@ -161,6 +187,54 @@ paths:
             e-mail da conta Google ainda não foi verificado pelo Google.
           content:
             application/json: { schema: { $ref: "#/components/schemas/Erro" } }          
+
+  /verificar-email:
+    post:
+      tags: [Autenticação]
+      summary: Confirma o endereço de e-mail usando o token enviado
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token]
+              properties:
+                token: { type: string, minLength: 10 }
+      responses:
+        "200":
+          description: E-mail confirmado.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  mensagem: { type: string }
+        "400": { $ref: "#/components/responses/ErroValidacao" }
+        "401":
+          description: Token inválido ou expirado.
+          content:
+            application/json: { schema: { $ref: "#/components/schemas/Erro" } }
+
+  /reenviar-verificacao:
+    post:
+      tags: [Autenticação]
+      summary: Solicita o reenvio da confirmação de e-mail
+      responses:
+        "200":
+          description: Mensagem genérica de confirmação.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  mensagem: { type: string }
+        "401": { $ref: "#/components/responses/NaoAutenticado" }
+        "409":
+          description: O intervalo mínimo entre reenvios ainda não passou.
+          content:
+            application/json: { schema: { $ref: "#/components/schemas/Erro" } }
 
   /esqueci-senha:
     post:
@@ -211,7 +285,9 @@ paths:
                 token: { type: string, description: "Token bruto recebido no link do e-mail." }
                 novaSenha:
                   type: string
-                  description: "Mesma política de senha forte do registro."
+                  minLength: 8
+                  maxLength: 200
+                  description: "Mesma política de senha forte do registro: pelo menos 1 letra e 1 número."
       responses:
         "200":
           description: Senha redefinida com sucesso.
@@ -273,7 +349,7 @@ paths:
               required: [nome, senha]
               properties:
                 nome: { type: string, minLength: 1, maxLength: 100 }
-                senha: { type: string, description: "Mesma política de senha forte do registro." }
+                senha: { type: string, minLength: 8, maxLength: 200, description: "Mesma política de senha forte do registro: pelo menos 1 letra e 1 número." }
       responses:
         "201":
           description: Conta criada e vínculo com a organização estabelecido.
@@ -378,6 +454,7 @@ paths:
           description: Quem chamou não é owner, ou não pertence a esta organização.
           content:
             application/json: { schema: { $ref: "#/components/schemas/Erro" } }
+        "404": { $ref: "#/components/responses/NaoEncontrado" }
 
   # ───────────────────────────── Membros ─────────────────────────────
   /organizations/{organizationId}/members:
@@ -397,6 +474,7 @@ paths:
                 items: { $ref: "#/components/schemas/Membro" }
         "401": { $ref: "#/components/responses/NaoAutenticado" }
         "403": { $ref: "#/components/responses/ForaDaOrganizacao" }
+        "404": { $ref: "#/components/responses/NaoEncontrado" }
 
   /organizations/{organizationId}/members/me:
     delete:
@@ -425,6 +503,7 @@ paths:
           description: O owner não pode sair sem antes transferir a propriedade.
           content:
             application/json: { schema: { $ref: "#/components/schemas/Erro" } }
+        "404": { $ref: "#/components/responses/NaoEncontrado" }
 
   /organizations/{organizationId}/members/transfer-ownership:
     post:
@@ -556,6 +635,7 @@ paths:
                 items: { $ref: "#/components/schemas/ConvitePendente" }
         "401": { $ref: "#/components/responses/NaoAutenticado" }
         "403": { $ref: "#/components/responses/ForaDaOrganizacao" }
+        "404": { $ref: "#/components/responses/NaoEncontrado" }
     post:
       tags: [Convites (gestão)]
       summary: Cria um convite para uma organização
@@ -597,6 +677,7 @@ paths:
           description: Esse e-mail já pertence à organização.
           content:
             application/json: { schema: { $ref: "#/components/schemas/Erro" } }
+        "404": { $ref: "#/components/responses/NaoEncontrado" }
 
   /organizations/{organizationId}/invites/{inviteId}:
     delete:
@@ -652,6 +733,7 @@ paths:
                   meta: { $ref: "#/components/schemas/PaginacaoMeta" }
         "401": { $ref: "#/components/responses/NaoAutenticado" }
         "403": { $ref: "#/components/responses/ForaDaOrganizacao" }
+        "404": { $ref: "#/components/responses/NaoEncontrado" }
     post:
       tags: [Projetos]
       summary: Cria um novo projeto (quadro)
@@ -670,8 +752,8 @@ paths:
               type: object
               required: [name]
               properties:
-                name: { type: string, minLength: 1 }
-                type: { type: string, description: "Tipo de projeto, informativo." }
+                name: { type: string, minLength: 1, maxLength: 120 }
+                type: { type: string, enum: [saas, app, jogo], default: saas, description: "Tipo de projeto, informativo." }
       responses:
         "201":
           description: Projeto criado, com as 3 colunas padrão.
@@ -686,6 +768,7 @@ paths:
             atingiu o limite de projetos do plano atual.
           content:
             application/json: { schema: { $ref: "#/components/schemas/Erro" } }
+        "404": { $ref: "#/components/responses/NaoEncontrado" }
 
   /organizations/{organizationId}/projects/{id}:
     get:
@@ -701,6 +784,7 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/Projeto" }
         "401": { $ref: "#/components/responses/NaoAutenticado" }
+        "403": { $ref: "#/components/responses/ForaDaOrganizacao" }
         "404":
           description: Projeto não encontrado (inexistente, ou de outra organização).
           content:
@@ -720,7 +804,7 @@ paths:
               type: object
               required: [name]
               properties:
-                name: { type: string, minLength: 1 }
+                name: { type: string, minLength: 1, maxLength: 120 }
       responses:
         "204": { description: Projeto renomeado com sucesso. }
         "400": { $ref: "#/components/responses/ErroValidacao" }
@@ -759,6 +843,29 @@ paths:
           content:
             application/json: { schema: { $ref: "#/components/schemas/Erro" } }
 
+  /organizations/{organizationId}/projects/{id}/background:
+    patch:
+      tags: [Projetos]
+      summary: Atualiza o fundo de um projeto
+      description: Qualquer membro da organização pode atualizar o fundo.
+      parameters:
+        - $ref: "#/components/parameters/OrganizationId"
+        - $ref: "#/components/parameters/ProjectPathId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ProjetoBackgroundEntrada" }
+      responses:
+        "204": { description: Fundo atualizado com sucesso. }
+        "400": { $ref: "#/components/responses/ErroValidacao" }
+        "401": { $ref: "#/components/responses/NaoAutenticado" }
+        "403": { $ref: "#/components/responses/ForaDaOrganizacao" }
+        "404":
+          description: Projeto não encontrado.
+          content:
+            application/json: { schema: { $ref: "#/components/schemas/Erro" } }
+
   # ───────────────────────────── Colunas ─────────────────────────────
   /organizations/{organizationId}/projects/{projectId}/colunas:
     get:
@@ -776,6 +883,7 @@ paths:
                 type: array
                 items: { $ref: "#/components/schemas/Coluna" }
         "401": { $ref: "#/components/responses/NaoAutenticado" }
+        "403": { $ref: "#/components/responses/ForaDaOrganizacao" }
         "404":
           description: Projeto não encontrado (inexistente, ou de outra organização).
           content:
@@ -882,6 +990,41 @@ paths:
           content:
             application/json: { schema: { $ref: "#/components/schemas/Erro" } }
 
+  /organizations/{organizationId}/projects/{projectId}/colunas/{id}/mover:
+    patch:
+      tags: [Colunas]
+      summary: Move uma coluna para outra posição no projeto
+      description: Qualquer membro da organização pode reordenar colunas.
+      parameters:
+        - $ref: "#/components/parameters/OrganizationId"
+        - $ref: "#/components/parameters/ProjectId"
+        - $ref: "#/components/parameters/ColunaId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [ordem]
+              properties:
+                ordem: { type: integer, minimum: 0 }
+      responses:
+        "200":
+          description: Coluna movida.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  mensagem: { type: string, example: "Coluna movida" }
+        "400": { $ref: "#/components/responses/ErroValidacao" }
+        "401": { $ref: "#/components/responses/NaoAutenticado" }
+        "403": { $ref: "#/components/responses/ForaDaOrganizacao" }
+        "404":
+          description: Projeto ou coluna não encontrados.
+          content:
+            application/json: { schema: { $ref: "#/components/schemas/Erro" } }
+
   # ───────────────────────────── Cards ─────────────────────────────
   /organizations/{organizationId}/projects/{projectId}/cards:
     get:
@@ -899,6 +1042,8 @@ paths:
                 type: array
                 items: { $ref: "#/components/schemas/Card" }
         "401": { $ref: "#/components/responses/NaoAutenticado" }
+        "403": { $ref: "#/components/responses/ForaDaOrganizacao" }
+        "404": { $ref: "#/components/responses/NaoEncontrado" }
     post:
       tags: [Cards]
       summary: Cria um card numa coluna
@@ -981,7 +1126,14 @@ paths:
         - $ref: "#/components/parameters/ProjectId"
         - $ref: "#/components/parameters/CardId"
       responses:
-        "204": { description: Card excluído com sucesso. }
+        "200":
+          description: Card excluído.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  mensagem: { type: string, example: "Card removido" }
         "401": { $ref: "#/components/responses/NaoAutenticado" }
         "403":
           description: Member não pode excluir cards.
@@ -1029,6 +1181,7 @@ paths:
                   mensagem: { type: string }
         "400": { $ref: "#/components/responses/ErroValidacao" }
         "401": { $ref: "#/components/responses/NaoAutenticado" }
+        "403": { $ref: "#/components/responses/ForaDaOrganizacao" }
         "404":
           description: >
             Card não encontrado, ou a coluna de origem/destino não
@@ -1057,9 +1210,9 @@ paths:
           application/json:
             schema:
               type: object
-              required: [name]
+              required: [nome]
               properties:
-                name: { type: string, minLength: 1, maxLength: 100 }
+                nome: { type: string, minLength: 1, maxLength: 100 }
       responses:
         "200":
           description: Nome atualizado.
@@ -1068,6 +1221,10 @@ paths:
               schema: { $ref: "#/components/schemas/Perfil" }
         "400": { $ref: "#/components/responses/ErroValidacao" }
         "401": { $ref: "#/components/responses/NaoAutenticado" }
+        "403":
+          description: É necessário confirmar o e-mail antes de atualizar o perfil.
+          content:
+            application/json: { schema: { $ref: "#/components/schemas/Erro" } }
 
   /perfil/senha:
     patch:
@@ -1087,7 +1244,7 @@ paths:
               required: [senhaAtual, novaSenha]
               properties:
                 senhaAtual: { type: string }
-                novaSenha: { type: string, description: "Mesma política de senha forte do registro." }
+                novaSenha: { type: string, minLength: 8, maxLength: 200, description: "Mesma política de senha forte do registro: pelo menos 1 letra e 1 número." }
       responses:
         "200":
           description: Senha alterada com sucesso.
@@ -1100,6 +1257,10 @@ paths:
         "400": { $ref: "#/components/responses/ErroValidacao" }
         "401":
           description: Sem autenticação, ou senha atual incorreta.
+          content:
+            application/json: { schema: { $ref: "#/components/schemas/Erro" } }
+        "403":
+          description: É necessário confirmar o e-mail antes de alterar a senha.
           content:
             application/json: { schema: { $ref: "#/components/schemas/Erro" } }
 
@@ -1167,6 +1328,10 @@ components:
       description: O usuário autenticado não pertence a esta organização.
       content:
         application/json: { schema: { $ref: "#/components/schemas/Erro" } }
+    NaoEncontrado:
+      description: Organização ou recurso solicitado não encontrado.
+      content:
+        application/json: { schema: { $ref: "#/components/schemas/Erro" } }
     ErroValidacao:
       description: Corpo da requisição não passou na validação (Zod).
       content:
@@ -1180,20 +1345,21 @@ components:
         erro:
           type: string
           example: "Mensagem descrevendo o que deu errado."
+        codigo: { type: string, description: "Código de erro opcional; por exemplo, EMAIL_NAO_VERIFICADO." }
 
-  AuthResposta:
-    type: object
-    properties:
-      token: { type: string, description: "JWT a ser enviado em Authorization: Bearer <token>." }
-      nome: { type: string }
-      organizationId: { type: string, format: uuid }
-      emailVerified:
-        type: boolean
-        description: >
-          Se o e-mail já está confirmado. Contas criadas via /auth/google
-          sempre chegam com true (o Google já garantiu a posse do
-          e-mail); contas criadas via /registro chegam com false até o
-          e-mail ser confirmado pelo link enviado (ver /verificar-email).
+    AuthResposta:
+      type: object
+      properties:
+        mensagem: { type: string, description: "Presente na resposta de /registro." }
+        token: { type: string, description: "JWT a ser enviado em Authorization: Bearer <token>." }
+        nome: { type: string }
+        organizationId: { type: string, format: uuid, nullable: true }
+        emailVerified:
+          type: boolean
+          description: >
+            Estado atual de verificação do e-mail. Contas novas via
+            /auth/google chegam com true; contas via /registro começam
+            com false até a confirmação local.
 
     OrganizacaoResumo:
       type: object
@@ -1256,7 +1422,8 @@ components:
         id: { type: string, format: uuid }
         organizationId: { type: string, format: uuid }
         name: { type: string }
-        type: { type: string }
+        type: { type: string, enum: [saas, app, jogo] }
+        background: { type: string, enum: [petroleo, oceano, floresta, por-do-sol, uva, ardosia, ceu, vinho], nullable: true }
         createdAt: { type: string, format: date-time }
 
     Coluna:
@@ -1291,7 +1458,11 @@ components:
     Perfil:
       type: object
       properties:
-        id: { type: string, format: uuid }
-        name: { type: string }
+        mensagem: { type: string, description: "Presente nas respostas de atualização do perfil e da senha." }
+        nome: { type: string }
         email: { type: string, format: email }
-        createdAt: { type: string, format: date-time }
+    ProjetoBackgroundEntrada:
+      type: object
+      required: [background]
+      properties:
+        background: { type: string, enum: [petroleo, oceano, floresta, por-do-sol, uva, ardosia, ceu, vinho], nullable: true }
