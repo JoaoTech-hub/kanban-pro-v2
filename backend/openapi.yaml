@@ -941,8 +941,10 @@ paths:
         endpoint mesmo quando a intenção é só editar título/descrição —
         é o mesmo schema de validação usado na criação. Enviar um
         `colunaId` diferente do atual move o card para essa coluna,
-        adicionando-o ao final dela (esse endpoint não reordena a
-        posição — para isso, ver `PATCH .../cards/{id}/mover`).
+        adicionando-o ao final dela e compactando as posições da coluna de
+        origem e de destino atomicamente. Se o `colunaId` não mudar, a
+        posição atual do card é preservada. Para escolher uma posição
+        específica, ver `PATCH .../cards/{id}/mover`.
       parameters:
         - $ref: "#/components/parameters/OrganizationId"
         - $ref: "#/components/parameters/ProjectId"

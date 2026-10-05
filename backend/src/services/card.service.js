@@ -42,19 +42,50 @@ async function criar({ organizationId, projectId, titulo, descricao, prioridade,
 
 async function atualizar({ id, organizationId, projectId, titulo, descricao, prioridade, prazo, colunaId, organizationRole }) {
   garantirPapelGerencial(organizationRole);
-  await colunaService.validarPertencimento(colunaId, organizationId, projectId);
+  const colunaDestino = await colunaService.validarPertencimento(colunaId, organizationId, projectId);
 
-  const resultado = await cardRepository.updateById(id, organizationId, projectId, {
-    titulo,
-    descricao,
-    prioridade,
-    prazo,
-    colunaId,
-  });
+  await prisma.$transaction(async (tx) => {
+    const cardTravado = await cardRepository.lockCardForUpdate(id, organizationId, projectId, tx);
+    if (!cardTravado) throw new NotFoundError("Tarefa não encontrada");
 
-  if (resultado.count === 0) throw new NotFoundError("Tarefa não encontrada");
+    const card = await cardRepository.findByIdAndProject(id, organizationId, projectId, tx);
+    if (!card) throw new NotFoundError("Tarefa não encontrada");
+
+    const dados = { titulo, descricao, prioridade, prazo, colunaId: colunaDestino.id };
+    if (card.colunaId === colunaDestino.id) {
+      const resultado = await cardRepository.updateById(id, organizationId, projectId, dados, tx);
+      if (resultado.count === 0) throw new NotFoundError("Tarefa não encontrada");
+      return;
+    }
+
+    await travarColunasDaMovimentacao(organizationId, card.colunaId, colunaDestino.id, tx);
+    const cardsOrigem = await cardRepository.findAllByColuna(organizationId, card.colunaId, tx);
+    const cardsDestino = await cardRepository.findAllByColuna(organizationId, colunaDestino.id, tx);
+
+    const resultado = await cardRepository.updateById(id, organizationId, projectId, dados, tx);
+    if (resultado.count === 0) throw new NotFoundError("Tarefa não encontrada");
+
+    await aplicarNovaOrdem(
+      tx,
+      cardsOrigem,
+      cardsOrigem.filter((c) => c.id !== id).map((c) => c.id),
+      card.colunaId
+    );
+    await aplicarNovaOrdem(
+      tx,
+      [...cardsDestino, card],
+      [...cardsDestino.map((c) => c.id), id],
+      colunaDestino.id
+    );
+  }, { timeout: 15000, maxWait: 10000 });
 
   return cardRepository.findByIdAndProject(id, organizationId, projectId);
+}
+
+async function travarColunasDaMovimentacao(organizationId, colunaOrigemId, colunaDestinoId, tx) {
+  const idsEsperados = [...new Set([colunaOrigemId, colunaDestinoId])];
+  const idsTravados = await cardRepository.lockColunasParaReordenar(organizationId, idsEsperados, tx);
+  if (idsTravados.length !== idsEsperados.length) throw new NotFoundError("Coluna não encontrada");
 }
 
 // Aplica a nova sequência (dense, 0..n-1) de uma coluna. `cardsConhecidos` é
@@ -80,9 +111,9 @@ async function mover({ id, organizationId, projectId, colunaId, ordem }) {
 
   await prisma.$transaction(
     async (tx) => {
-      // Relê o card DENTRO da transação (não usa nenhum valor lido antes
-      // dela) para descobrir a coluna de origem real no momento do lock —
-      // nunca a partir de uma leitura feita antes de travar nada.
+      // Serializa movimentações do mesmo card antes de descobrir a origem.
+      const cardTravado = await cardRepository.lockCardForUpdate(id, organizationId, projectId, tx);
+      if (!cardTravado) throw new NotFoundError("Tarefa não encontrada");
       const card = await cardRepository.findByIdAndProject(id, organizationId, projectId, tx);
       if (!card) throw new NotFoundError("Tarefa não encontrada");
 
@@ -94,20 +125,11 @@ async function mover({ id, organizationId, projectId, colunaId, ordem }) {
       // trava que já existia (evita duas movimentações concorrentes gerarem
       // 'ordem' duplicada), agora estendida para cobrir a origem também, já
       // que mover para outra coluna precisa recompactar as duas.
-      const idsEsperados = [...new Set([colunaOrigemId, colunaDestinoId])];
-      const idsTravados = await cardRepository.lockColunasParaReordenar(
-        organizationId,
-        idsEsperados,
-        tx
-      );
+      await travarColunasDaMovimentacao(organizationId, colunaOrigemId, colunaDestinoId, tx);
       // Se alguma das colunas esperadas não veio de volta, ela foi excluída
       // concorrentemente entre a validação da rota (fora da transação) e
       // este lock — nunca deve prosseguir movendo o card pra uma coluna que
       // não existe mais.
-      if (idsTravados.length !== idsEsperados.length) {
-        throw new NotFoundError("Coluna não encontrada");
-      }
-
       if (colunaOrigemId === colunaDestinoId) {
         // Caso 1: reordenar dentro da mesma coluna.
         const cardsAtuais = await cardRepository.findAllByColuna(organizationId, colunaOrigemId, tx);

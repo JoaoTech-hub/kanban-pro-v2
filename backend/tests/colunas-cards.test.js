@@ -855,6 +855,112 @@ describe("Colunas e Cards", () => {
         expect(new Set(ordens).size).toBe(ordens.length);
       }
 
+      test("editar detalhes na mesma coluna preserva a posição do card", async () => {
+        const usuario = await registrarUsuario("editarPreservaOrdem");
+        const projeto = await criarProjeto(usuario.token, usuario.organizationId);
+        const colunas = await request(app)
+          .get(`${base(usuario.organizationId, projeto.id)}/colunas`)
+          .set("Authorization", `Bearer ${usuario.token}`);
+        const colunaId = colunas.body[0].id;
+        const [a, b, c] = await criarCards(usuario.token, usuario.organizationId, projeto.id, colunaId, ["A", "B", "C"]);
+
+        const resposta = await request(app)
+          .patch(`${base(usuario.organizationId, projeto.id)}/cards/${b.id}`)
+          .set("Authorization", `Bearer ${usuario.token}`)
+          .send({ titulo: "B editado", colunaId });
+
+        expect(resposta.status).toBe(200);
+        const lista = await listarPorColuna(usuario.token, usuario.organizationId, projeto.id, colunaId);
+        expect(lista.map((card) => card.id)).toEqual([a.id, b.id, c.id]);
+        expect(lista[1].titulo).toBe("B editado");
+        assertOrdemDensaSemBuracos(lista);
+      });
+
+      test("editar movendo o primeiro card anexa no destino e compacta as duas colunas", async () => {
+        const usuario = await registrarUsuario("editarMovePrimeiro");
+        const projeto = await criarProjeto(usuario.token, usuario.organizationId);
+        const colunas = await request(app)
+          .get(`${base(usuario.organizationId, projeto.id)}/colunas`)
+          .set("Authorization", `Bearer ${usuario.token}`);
+        const origemId = colunas.body[0].id;
+        const destinoId = colunas.body[1].id;
+        const [a, b, c] = await criarCards(usuario.token, usuario.organizationId, projeto.id, origemId, ["A", "B", "C"]);
+        const [x, y] = await criarCards(usuario.token, usuario.organizationId, projeto.id, destinoId, ["X", "Y"]);
+
+        const resposta = await request(app)
+          .patch(`${base(usuario.organizationId, projeto.id)}/cards/${a.id}`)
+          .set("Authorization", `Bearer ${usuario.token}`)
+          .send({ titulo: "A movido", colunaId: destinoId });
+
+        expect(resposta.status).toBe(200);
+        const listaOrigem = await listarPorColuna(usuario.token, usuario.organizationId, projeto.id, origemId);
+        const listaDestino = await listarPorColuna(usuario.token, usuario.organizationId, projeto.id, destinoId);
+        expect(listaOrigem.map((card) => card.id)).toEqual([b.id, c.id]);
+        expect(listaDestino.map((card) => card.id)).toEqual([x.id, y.id, a.id]);
+        assertOrdemDensaSemBuracos(listaOrigem);
+        assertOrdemDensaSemBuracos(listaDestino);
+      });
+
+      test("editar para uma coluna vazia inicia a ordem em zero", async () => {
+        const usuario = await registrarUsuario("editarMoveColunaVazia");
+        const projeto = await criarProjeto(usuario.token, usuario.organizationId);
+        const colunas = await request(app)
+          .get(`${base(usuario.organizationId, projeto.id)}/colunas`)
+          .set("Authorization", `Bearer ${usuario.token}`);
+        const origemId = colunas.body[0].id;
+        const destinoId = colunas.body[1].id;
+        const [a, b] = await criarCards(usuario.token, usuario.organizationId, projeto.id, origemId, ["A", "B"]);
+
+        const resposta = await request(app)
+          .patch(`${base(usuario.organizationId, projeto.id)}/cards/${a.id}`)
+          .set("Authorization", `Bearer ${usuario.token}`)
+          .send({ titulo: "A movido", colunaId: destinoId });
+
+        expect(resposta.status).toBe(200);
+        const listaOrigem = await listarPorColuna(usuario.token, usuario.organizationId, projeto.id, origemId);
+        const listaDestino = await listarPorColuna(usuario.token, usuario.organizationId, projeto.id, destinoId);
+        expect(listaOrigem.map((card) => card.id)).toEqual([b.id]);
+        expect(listaDestino.map((card) => card.id)).toEqual([a.id]);
+        expect(listaDestino[0].ordem).toBe(0);
+        assertOrdemDensaSemBuracos(listaOrigem);
+        assertOrdemDensaSemBuracos(listaDestino);
+      });
+
+      test("edições concorrentes movendo cards para a mesma coluna mantêm ordem densa", async () => {
+        const usuario = await registrarUsuario("editarMoveConcorrente");
+        const projeto = await criarProjeto(usuario.token, usuario.organizationId);
+        const colunas = await request(app)
+          .get(`${base(usuario.organizationId, projeto.id)}/colunas`)
+          .set("Authorization", `Bearer ${usuario.token}`);
+        const origemAId = colunas.body[0].id;
+        const destinoId = colunas.body[1].id;
+        const origemBId = colunas.body[2].id;
+        const [a] = await criarCards(usuario.token, usuario.organizationId, projeto.id, origemAId, ["A"]);
+        const [b] = await criarCards(usuario.token, usuario.organizationId, projeto.id, origemBId, ["B"]);
+        const [x] = await criarCards(usuario.token, usuario.organizationId, projeto.id, destinoId, ["X"]);
+
+        const [respostaA, respostaB] = await Promise.all([
+          request(app)
+            .patch(`${base(usuario.organizationId, projeto.id)}/cards/${a.id}`)
+            .set("Authorization", `Bearer ${usuario.token}`)
+            .send({ titulo: "A", colunaId: destinoId }),
+          request(app)
+            .patch(`${base(usuario.organizationId, projeto.id)}/cards/${b.id}`)
+            .set("Authorization", `Bearer ${usuario.token}`)
+            .send({ titulo: "B", colunaId: destinoId }),
+        ]);
+
+        expect(respostaA.status).toBe(200);
+        expect(respostaB.status).toBe(200);
+        const listas = await Promise.all([origemAId, destinoId, origemBId].map((coluna) =>
+          listarPorColuna(usuario.token, usuario.organizationId, projeto.id, coluna)
+        ));
+        expect(listas[0]).toHaveLength(0);
+        expect(listas[1].map((card) => card.id).sort()).toEqual([a.id, b.id, x.id].sort());
+        expect(listas[2]).toHaveLength(0);
+        for (const lista of listas) assertOrdemDensaSemBuracos(lista);
+      });
+
       test("mover dentro da mesma coluna para o início desloca os demais corretamente", async () => {
         const usuario = await registrarUsuario("moverInicio");
         const projeto = await criarProjeto(usuario.token, usuario.organizationId);

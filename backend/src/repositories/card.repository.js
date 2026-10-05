@@ -10,19 +10,23 @@ function findAllByProject(organizationId, projectId) {
 // Antes filtrava só por id + organizationId — não confirmava que o card
 // pertence ao projectId da URL. Agora exige o vínculo via coluna.projectId,
 // fechando a lacuna de IDOR intra-tenant identificada na auditoria (A2).
-// Aceita um `tx` opcional: usado pela movimentação (mover()), que precisa
-// reler o card DENTRO da transação, depois das colunas já travadas, para
-// nunca decidir a coluna de origem com base numa leitura feita fora do lock.
+// Aceita um `tx` opcional para reler o card na mesma transação que mantém
+// seus locks, sem decidir a coluna de origem por uma leitura desatualizada.
 function findByIdAndProject(id, organizationId, projectId, tx = prisma) {
   return tx.card.findFirst({
     where: { id, organizationId, coluna: { projectId } },
   });
 }
 
-// Todos os cards de uma coluna, ordenados por `ordem` — usado pela
-// movimentação (mover()) para recalcular a sequência inteira da coluna de
-// origem e/ou destino. Sempre chamado DEPOIS de lockColunasParaReordenar,
-// então a leitura já reflete o estado "congelado" pela trava.
+// Serializa operações concorrentes sobre o mesmo card e confirma o escopo
+// organização/projeto antes de adquirir o lock da linha.
+async function lockCardForUpdate(id, organizationId, projectId, tx) {
+  const rows = await tx.$queryRaw`SELECT c.id FROM "cards" c INNER JOIN "colunas" col ON col.id = c.coluna_id WHERE c.id = ${id} AND c.organization_id = ${organizationId} AND col.project_id = ${projectId} FOR UPDATE OF c`;
+  return rows.length > 0;
+}
+
+// Todos os cards de uma coluna, ordenados por `ordem` — usado pela edição e
+// movimentação para recalcular a sequência após as colunas estarem travadas.
 function findAllByColuna(organizationId, colunaId, tx = prisma) {
   return tx.card.findMany({
     where: { organizationId, colunaId },
@@ -109,6 +113,7 @@ function deleteByIdAndProject(id, organizationId, projectId) {
 module.exports = {
   findAllByProject,
   findByIdAndProject,
+  lockCardForUpdate,
   findAllByColuna,
   lockColunasParaReordenar,
   updateOrdem,
