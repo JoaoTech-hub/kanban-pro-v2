@@ -2,6 +2,16 @@ require("dotenv").config();
 
 const { z } = require("zod");
 
+const MIN_JWT_SECRET_BYTES = 32;
+
+function jwtSecretNaoObviamenteFraco(secret) {
+  const valor = secret.trim();
+  const placeholder = /^(?:coloque|substitua|changeme|change[_ -]?me|your[_ -]?|secret$|password$|example$|test(?:$|[_ -]))/i;
+  const repeticaoCurta = /^(.{1,8})\1+$/s;
+
+  return !placeholder.test(valor) && !repeticaoCurta.test(valor);
+}
+
 // Valida process.env uma única vez, na primeira vez que este módulo é importado
 // (Node cacheia módulos por caminho — chamadas seguintes reaproveitam o resultado já validado).
 // Se algo obrigatório estiver ausente ou malformado, o processo falha AGORA, no boot,
@@ -12,7 +22,14 @@ const envSchema = z
     PORT: z.coerce.number().int().positive().default(3000),
     DATABASE_URL: z.string().min(1, "DATABASE_URL é obrigatória"),
     DIRECT_URL: z.string().min(1, "DIRECT_URL é obrigatória"),
-    JWT_SECRET: z.string().min(10, "JWT_SECRET deve ter pelo menos 10 caracteres"),
+    JWT_SECRET: z
+      .string()
+      .refine((secret) => Buffer.byteLength(secret.trim(), "utf8") >= MIN_JWT_SECRET_BYTES, {
+        message: `JWT_SECRET deve ter pelo menos ${MIN_JWT_SECRET_BYTES} bytes.`,
+      })
+      .refine(jwtSecretNaoObviamenteFraco, {
+        message: "JWT_SECRET não pode ser um placeholder ou uma sequência repetitiva.",
+      }),
     FRONTEND_URL: z.string().optional(),
     EMAIL_PROVIDER: z.string().default("resend"),
     RESEND_API_KEY: z.string().optional(),
