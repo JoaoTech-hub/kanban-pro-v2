@@ -50,6 +50,7 @@ describe("Autenticação", () => {
     const idQualquer = "00000000-0000-0000-0000-000000000000";
     const res = await request(app).get(`/organizations/${idQualquer}/projects`);
     expect(res.status).toBe(401);
+    expect(res.body.codigo).toBe("SESSAO_INVALIDA");
   });
 
   test("logout autenticado incrementa tokenVersion, revoga todos os JWTs do usuário e preserva outros usuários", async () => {

@@ -7,13 +7,13 @@ import api from "../services/api";
 // invocar exatamente a mesma lógica que roda em produção é chamar o handler
 // `rejected` registrado no InterceptorManager (api.interceptors.response
 // .handlers[0].rejected), simulando o axios reportando um erro de resposta.
-function dispararErroDeResposta(status, url = "/qualquer-rota") {
+function dispararErroDeResposta(status, url = "/qualquer-rota", codigo) {
   const handler = api.interceptors.response.handlers[0];
-  const erro = { response: { status }, config: { url } };
+  const erro = { response: { status, data: codigo ? { codigo } : {} }, config: { url } };
   return handler.rejected(erro);
 }
 
-describe("api.js — interceptor de resposta 401 (Fase 8.1 — Bloco 3)", () => {
+describe("api.js — interceptor de resposta 401", () => {
   let originalLocation;
 
   beforeEach(() => {
@@ -35,8 +35,9 @@ describe("api.js — interceptor de resposta 401 (Fase 8.1 — Bloco 3)", () => 
     window.location = originalLocation;
   });
 
-  test("401 em rota não esperada limpa token, nome, organizationId e emailVerified do localStorage", async () => {
-    await expect(dispararErroDeResposta(401)).rejects.toBeTruthy();
+  test("401 identificado como sessão inválida limpa os dados de autenticação", async () => {
+    await expect(dispararErroDeResposta(401, "/organizations/org-1/projects", "SESSAO_INVALIDA"))
+      .rejects.toBeTruthy();
 
     expect(localStorage.getItem("token")).toBeNull();
     expect(localStorage.getItem("nome")).toBeNull();
@@ -44,21 +45,53 @@ describe("api.js — interceptor de resposta 401 (Fase 8.1 — Bloco 3)", () => 
     expect(localStorage.getItem("emailVerified")).toBeNull();
   });
 
-  test("401 em rota não esperada redireciona para / quando não está lá", async () => {
+  test("401 identificado como sessão inválida redireciona para /", async () => {
     window.location.pathname = "/dashboard";
 
-    await expect(dispararErroDeResposta(401)).rejects.toBeTruthy();
+    await expect(dispararErroDeResposta(401, "/perfil", "SESSAO_INVALIDA")).rejects.toBeTruthy();
 
     expect(window.location.href).toBe("/");
   });
 
-  test("401 em rota com 401 esperado (ex.: /login) não limpa a sessão", async () => {
+  test("401 de login ou senha incorreta sem código de sessão não limpa a sessão", async () => {
     await expect(dispararErroDeResposta(401, "/login")).rejects.toBeTruthy();
+    await expect(dispararErroDeResposta(401, "/perfil/senha")).rejects.toBeTruthy();
 
     expect(localStorage.getItem("token")).toBe("tok-123");
     expect(localStorage.getItem("nome")).toBe("João");
     expect(localStorage.getItem("organizationId")).toBe("org-1");
     expect(localStorage.getItem("emailVerified")).toBe("false");
+  });
+
+  test.each([
+    ["convite inválido", "/convites/aceitar/token-invalido"],
+    ["recuperação de senha inválida", "/redefinir-senha"],
+    ["verificação de e-mail inválida", "/verificar-email"],
+  ])("401 de %s sem código de sessão mantém o usuário autenticado", async (_fluxo, url) => {
+    await expect(dispararErroDeResposta(401, url)).rejects.toBeTruthy();
+
+    expect(localStorage.getItem("token")).toBe("tok-123");
+    expect(localStorage.getItem("nome")).toBe("João");
+    expect(localStorage.getItem("organizationId")).toBe("org-1");
+    expect(localStorage.getItem("emailVerified")).toBe("false");
+    expect(window.location.href).toBe("");
+  });
+
+  test("401 de convite inválido durante uma sessão logada não encerra essa sessão", async () => {
+    await expect(
+      dispararErroDeResposta(401, "/convites/aceitar/token-expirado")
+    ).rejects.toBeTruthy();
+
+    expect(localStorage.getItem("token")).toBe("tok-123");
+    expect(window.location.href).toBe("");
+  });
+
+  test("logout com JWT revogado continua limpando a sessão via código de sessão inválida", async () => {
+    await expect(dispararErroDeResposta(401, "/auth/logout", "SESSAO_INVALIDA"))
+      .rejects.toBeTruthy();
+
+    expect(localStorage.getItem("token")).toBeNull();
+    expect(window.location.href).toBe("/");
   });
 
   test("erro que não é 401 não limpa a sessão", async () => {
@@ -69,7 +102,10 @@ describe("api.js — interceptor de resposta 401 (Fase 8.1 — Bloco 3)", () => 
   });
 
   test("não altera nenhuma outra lógica: o erro original continua sendo propagado (rejeitado) para quem chamou", async () => {
-    const erroOriginal = { response: { status: 401 }, config: { url: "/perfil" } };
+    const erroOriginal = {
+      response: { status: 401, data: { codigo: "SESSAO_INVALIDA" } },
+      config: { url: "/perfil" },
+    };
     const handler = api.interceptors.response.handlers[0];
 
     await expect(handler.rejected(erroOriginal)).rejects.toBe(erroOriginal);

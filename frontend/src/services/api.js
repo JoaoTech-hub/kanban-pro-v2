@@ -14,22 +14,15 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
-// Rotas onde um 401 significa um erro de validação do formulário
-// (ex: "senha atual incorreta"), não uma sessão expirada — o interceptor
-// não deve deslogar o usuário automaticamente nesses casos, só deixar
-// o erro seguir pra tela tratar normalmente.
-const ROTAS_COM_401_ESPERADO = ["/perfil/senha", "/login"];
-
-// Se o token expirou ou é inválido, o backend responde 401.
-// Nesse caso, limpa a sessão local e manda o usuário de volta pro login,
-// em vez de deixar a tela travada mostrando erros de requisição.
+// O middleware JWT marca a resposta com SESSAO_INVALIDA quando o token está
+// ausente, inválido, expirado ou revogado. Só esse 401 encerra a sessão;
+// 401 de fluxos de negócio segue para a tela que iniciou a requisição.
 api.interceptors.response.use(
   (response) => response,
   (error) => {
-    const rotaAtual = error.config?.url || "";
-    const eh401Esperado = ROTAS_COM_401_ESPERADO.some((rota) => rotaAtual.includes(rota));
+    const sessaoInvalida = error.response?.data?.codigo === "SESSAO_INVALIDA";
 
-    if (error.response?.status === 401 && !eh401Esperado) {
+    if (error.response?.status === 401 && sessaoInvalida) {
       localStorage.removeItem("token");
       localStorage.removeItem("nome");
       localStorage.removeItem("organizationId");
