@@ -31,6 +31,27 @@ export default function Login() {
 
   const conviteToken = location.state?.conviteToken;
 
+  async function aceitarConviteAposGoogle() {
+    try {
+      const aceite = await api.post(`/convites/${conviteToken}/aceitar-existente`);
+      const organizationId = aceite.data?.organizationId;
+      if (!organizationId) {
+        showToast("Não foi possível concluir o aceite do convite.", "erro");
+        return;
+      }
+
+      trocarOrganizacao(organizationId);
+      await carregarOrganizacoes();
+      showToast("Convite aceito com sucesso!", "sucesso");
+      navigate("/dashboard");
+    } catch (err) {
+      showToast(
+        err.response?.data?.erro || "Não foi possível aceitar o convite.",
+        "erro"
+      );
+    }
+  }
+
   // Se já existe uma sessão válida (token sobrevivendo no localStorage de
   // uma aba fechada sem "Sair", por exemplo), não faz sentido mostrar o
   // formulário de login — e mais importante, evita que os Providers globais
@@ -53,10 +74,7 @@ export default function Login() {
       const resposta = await api.post("/login", { email, senha });
 
       if (conviteToken) {
-        // Fluxo de convite preservado como estava: sempre segue para o
-        // dashboard após aceitar (comportamento fora do escopo desta
-        // etapa). Só passamos emailVerified para o AuthContext manter o
-        // estado coerente com o que o backend retornou.
+        // Mantém a sessão de login sem redirecionar antes de concluir o aceite.
         login(resposta.data.token, resposta.data.nome, resposta.data.organizationId, {
           redirecionar: false,
           emailVerified: resposta.data.emailVerified,
@@ -72,6 +90,7 @@ export default function Login() {
             err.response?.data?.erro || "Não foi possível aceitar o convite.",
             "erro"
           );
+          return;
         }
 
         navigate("/dashboard");
@@ -124,12 +143,11 @@ export default function Login() {
           </SubmitButton>
         </form>
 
-        {!conviteToken && (
-          <>
-            <Divider>ou</Divider>
-            <GoogleAuthButton text="signin_with" />
-          </>
-        )}
+        <Divider>ou</Divider>
+        <GoogleAuthButton
+          text="signin_with"
+          aoAutenticar={conviteToken ? aceitarConviteAposGoogle : undefined}
+        />
 
         <FooterLink>
           <button type="button" onClick={() => navigate("/esqueci-senha")}>

@@ -1,6 +1,6 @@
 /* eslint-disable react-refresh/only-export-components */
 
-import { createContext, useContext, useState, useCallback, useEffect } from "react";
+import { createContext, useContext, useState, useCallback, useEffect, useRef } from "react";
 import api from "../services/api";
 import { useToast } from "./ToastContext";
 import { useAuth } from "./AuthContext";
@@ -19,18 +19,24 @@ export function OrganizationsProvider({ children }) {
   const [carregando, setCarregando] = useState(true);
   const [erro, setErro] = useState(null);
   const { showToast } = useToast();
+  const geracaoRequisicao = useRef(0);
 
   const carregar = useCallback(async () => {
+    const geracaoAtual = ++geracaoRequisicao.current;
     setCarregando(true);
     setErro(null);
     try {
       const resposta = await api.get("/organizations");
+      if (geracaoAtual !== geracaoRequisicao.current) return;
       setOrganizacoes(resposta.data || []);
     } catch (e) {
+      if (geracaoAtual !== geracaoRequisicao.current) return;
       console.error(e);
       setErro("Não foi possível carregar suas organizações.");
     } finally {
-      setCarregando(false);
+      if (geracaoAtual === geracaoRequisicao.current) {
+        setCarregando(false);
+      }
     }
   }, []);
 
@@ -53,6 +59,8 @@ export function OrganizationsProvider({ children }) {
       // Logout (ou ainda não autenticado): limpa o estado — evita vazar a
       // lista de organizações da conta anterior pra uma nova sessão na
       // mesma aba.
+      // Invalida qualquer busca pendente da sessão anterior.
+      geracaoRequisicao.current += 1;
       setOrganizacoes([]);
       setCarregando(false);
     }

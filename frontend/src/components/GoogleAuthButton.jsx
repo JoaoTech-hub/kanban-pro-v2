@@ -16,12 +16,12 @@ const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID;
 // (por exemplo os testes isolados de Login.test.jsx/Registro.test.jsx)
 // quebraria mesmo com o Google desligado. Delegar pra um componente interno
 // mantém os hooks fora do caminho quando a função está desativada.
-export default function GoogleAuthButton({ text = "continue_with" }) {
+export default function GoogleAuthButton({ text = "continue_with", aoAutenticar }) {
   if (!GOOGLE_CLIENT_ID) return null;
-  return <GoogleAuthButtonAtivo text={text} />;
+  return <GoogleAuthButtonAtivo text={text} aoAutenticar={aoAutenticar} />;
 }
 
-function GoogleAuthButtonAtivo({ text }) {
+function GoogleAuthButtonAtivo({ text, aoAutenticar }) {
   const { dark } = useTheme();
   const { entrarComGoogle, tratarErroGoogle } = useGoogleAuth();
 
@@ -30,7 +30,10 @@ function GoogleAuthButtonAtivo({ text }) {
       tratarErroGoogle();
       return;
     }
-    entrarComGoogle(credentialResponse.credential).catch(tratarErroGoogle);
+    const autenticacao = aoAutenticar
+      ? entrarComGoogle(credentialResponse.credential, aoAutenticar)
+      : entrarComGoogle(credentialResponse.credential);
+    autenticacao.catch(tratarErroGoogle);
   }
 
   return (

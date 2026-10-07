@@ -56,6 +56,7 @@ describe("useGoogleAuth (Etapa 3 — frontend do Google Login)", () => {
     });
 
     expect(api.post).toHaveBeenCalledWith("/auth/google", { idToken: "credential-do-google" });
+    expect(api.post).toHaveBeenCalledTimes(1);
   });
 
   test("emailVerified: true sincroniza o AuthContext (mesmo mecanismo do login tradicional) e navega para /dashboard", async () => {
@@ -73,6 +74,7 @@ describe("useGoogleAuth (Etapa 3 — frontend do Google Login)", () => {
     expect(result.current.auth.emailVerified).toBe(true);
     expect(localStorage.getItem("token")).toBe("tok-1");
     expect(mockNavigate).toHaveBeenCalledWith("/dashboard");
+    expect(api.post).toHaveBeenCalledTimes(1);
   });
 
   test("emailVerified: false sincroniza o AuthContext e navega para /confirme-seu-email (mesma regra da Fase 8.1)", async () => {
@@ -88,6 +90,28 @@ describe("useGoogleAuth (Etapa 3 — frontend do Google Login)", () => {
     expect(result.current.auth.emailVerified).toBe(false);
     expect(mockNavigate).toHaveBeenCalledWith("/confirme-seu-email");
     expect(mockNavigate).not.toHaveBeenCalledWith("/dashboard");
+  });
+
+  test("executa o callback de convite após autenticar e deixa a navegação sob controle do fluxo", async () => {
+    const dadosLogin = {
+      token: "tok-convite",
+      nome: "João",
+      organizationId: "org-atual",
+      emailVerified: true,
+    };
+    const aoAutenticar = vi.fn().mockResolvedValue(undefined);
+    api.post.mockResolvedValueOnce({ data: dadosLogin });
+    const { result } = renderizarHookComposto();
+
+    await act(async () => {
+      await result.current.google.entrarComGoogle("credential-convite", aoAutenticar);
+    });
+
+    expect(api.post).toHaveBeenCalledTimes(1);
+    expect(api.post).toHaveBeenCalledWith("/auth/google", { idToken: "credential-convite" });
+    expect(result.current.auth.token).toBe("tok-convite");
+    expect(aoAutenticar).toHaveBeenCalledWith(dadosLogin);
+    expect(mockNavigate).not.toHaveBeenCalled();
   });
 
   test("tratarErroGoogle exibe a mensagem de erro vinda do backend", async () => {

@@ -79,6 +79,19 @@ describe("GoogleAuthButton (Etapa 3 — frontend do Google Login)", () => {
     expect(tratarErroGoogle).not.toHaveBeenCalled();
   });
 
+  test("encaminha o callback de autenticação para o fluxo que iniciou o Google Login", async () => {
+    vi.stubEnv("VITE_GOOGLE_CLIENT_ID", "client-id-de-teste");
+    const GoogleAuthButton = await importarComponente();
+    const aoAutenticar = vi.fn();
+
+    render(<GoogleAuthButton aoAutenticar={aoAutenticar} />);
+    fireEvent.click(screen.getByText("google-sucesso-com-credential"));
+
+    await waitFor(() => {
+      expect(entrarComGoogle).toHaveBeenCalledWith("credential-fake-123", aoAutenticar);
+    });
+  });
+
   test("sucesso do Google sem credential é tratado como erro (não chama entrarComGoogle)", async () => {
     vi.stubEnv("VITE_GOOGLE_CLIENT_ID", "client-id-de-teste");
     const GoogleAuthButton = await importarComponente();

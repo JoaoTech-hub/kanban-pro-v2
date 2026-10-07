@@ -3,18 +3,15 @@ import api from "../services/api";
 import { useAuth } from "../context/AuthContext";
 import { useToast } from "../context/ToastContext";
 
-// Compartilhado entre Login.jsx e Registro.jsx: os dois botões do Google
-// terminam no mesmo endpoint (POST /auth/google) e no mesmo destino — o
-// backend já decide sozinho se é uma conta nova, uma vinculação a uma conta
-// existente, ou um login de quem já usou o Google antes (Etapa 1). O
-// frontend só repassa o credential (ID Token) recebido do Google e trata a
-// resposta exatamente como o login tradicional já trata.
+// Compartilhado entre Login.jsx e Registro.jsx: ambos usam POST /auth/google.
+// O Login pode fornecer um callback para concluir um fluxo iniciado por
+// convite; sem callback, o destino padrão continua sendo o dashboard/email.
 export function useGoogleAuth() {
   const { login } = useAuth();
   const { showToast } = useToast();
   const navigate = useNavigate();
 
-  async function entrarComGoogle(idToken) {
+  async function entrarComGoogle(idToken, aoAutenticar) {
     const resposta = await api.post("/auth/google", { idToken });
     const { token, nome, organizationId, emailVerified } = resposta.data;
     // redirecionar: false — mesmo padrão do login/registro tradicionais
@@ -24,6 +21,12 @@ export function useGoogleAuth() {
     // sempre cai em /dashboard — mas a checagem fica aqui por segurança/
     // consistência, sem assumir esse detalhe do backend.
     login(token, nome, organizationId, { redirecionar: false, emailVerified });
+
+    if (aoAutenticar) {
+      await aoAutenticar(resposta.data);
+      return;
+    }
+
     navigate(emailVerified ? "/dashboard" : "/confirme-seu-email");
   }
 

@@ -9,9 +9,8 @@ import { useAuth } from "../context/AuthContext";
 import { useToast } from "../context/ToastContext";
 import { useOrganizacoes } from "../hooks/useOrganizacoes";
 
-// Teste de componente isolado — mesma estratégia de HeaderMenu.test.jsx:
-// mocka diretamente os contextos/hooks que Login.jsx consome (useAuth,
-// useToast, useOrganizacoes) em vez de montar a árvore de Providers inteira.
+// Teste de componente isolado: contextos de Login são mocks; o botão Google
+// usa o hook real para cobrir autenticação e o callback do convite sem SDK externo.
 vi.mock("../services/api", () => ({
   default: {
     post: vi.fn(),
@@ -26,14 +25,24 @@ vi.mock("../context/ToastContext", () => ({
 vi.mock("../hooks/useOrganizacoes", () => ({
   useOrganizacoes: vi.fn(),
 }));
-// Etapa 3 (frontend do Google Login): GoogleAuthButton é tratado como caixa
-// preta aqui — este arquivo testa Login.jsx isoladamente (sem ThemeProvider
-// do app nem GoogleOAuthProvider por perto), e o próprio componente real já
-// tem cobertura dedicada. Sem esse mock, o teste ficaria acoplado a
-// VITE_GOOGLE_CLIENT_ID estar vazio no ambiente de teste.
-vi.mock("../components/GoogleAuthButton", () => ({
-  default: () => null,
-}));
+// O harness abaixo dispensa GoogleOAuthProvider e o SDK visual; a lógica de
+// autenticação é exercida pelo useGoogleAuth real.
+vi.mock("../components/GoogleAuthButton", async () => {
+  const { useGoogleAuth } = await vi.importActual("../hooks/useGoogleAuth");
+  return {
+    default: ({ aoAutenticar }) => {
+      const { entrarComGoogle, tratarErroGoogle } = useGoogleAuth();
+      return (
+        <button
+          type="button"
+          onClick={() => entrarComGoogle("credential-de-teste", aoAutenticar).catch(tratarErroGoogle)}
+        >
+          Continuar com Google
+        </button>
+      );
+    },
+  };
+});
 
 const mockNavigate = vi.fn();
 vi.mock("react-router-dom", async (importOriginal) => {
@@ -158,7 +167,7 @@ describe("Login — integração com emailVerified (Fase 8.1)", () => {
     expect(mockNavigate).not.toHaveBeenCalled();
   });
 
-  test("[regressão] fluxo de aceite de convite continua indo para /dashboard mesmo com emailVerified: false", async () => {
+  test("aceite bem-sucedido seleciona a organização, recarrega a lista e navega ao dashboard", async () => {
     api.post.mockImplementation((url) => {
       if (url === "/login") {
         return Promise.resolve({
@@ -196,6 +205,138 @@ describe("Login — integração com emailVerified (Fase 8.1)", () => {
     expect(showToast).toHaveBeenCalledWith("Convite aceito com sucesso!", "sucesso");
     expect(mockNavigate).toHaveBeenCalledWith("/dashboard");
     expect(mockNavigate).not.toHaveBeenCalledWith("/confirme-seu-email");
+    expect(api.post.mock.invocationCallOrder[1]).toBeLessThan(
+      trocarOrganizacao.mock.invocationCallOrder[0]
+    );
+    expect(trocarOrganizacao.mock.invocationCallOrder[0]).toBeLessThan(
+      carregar.mock.invocationCallOrder[0]
+    );
+    expect(carregar.mock.invocationCallOrder[0]).toBeLessThan(
+      mockNavigate.mock.invocationCallOrder[0]
+    );
+  });
+
+  test("falha no aceite informa o erro e não seleciona a organização nem navega ao dashboard", async () => {
+    api.post.mockImplementation((url) => {
+      if (url === "/login") {
+        return Promise.resolve({
+          data: {
+            token: "token-convite",
+            nome: "João Vitor",
+            organizationId: "org-antiga",
+            emailVerified: true,
+          },
+        });
+      }
+      if (url === "/convites/token-convite-123/aceitar-existente") {
+        return Promise.reject({ response: { data: { erro: "Este convite expirou." } } });
+      }
+      return Promise.reject(new Error(`URL inesperada: ${url}`));
+    });
+
+    renderPagina([{ pathname: "/", state: { conviteToken: "token-convite-123" } }]);
+    preencherFormulario();
+    fireEvent.click(screen.getByText("Entrar"));
+
+    await waitFor(() => {
+      expect(showToast).toHaveBeenCalledWith("Este convite expirou.", "erro");
+    });
+    expect(login).toHaveBeenCalledWith("token-convite", "João Vitor", "org-antiga", {
+      redirecionar: false,
+      emailVerified: true,
+    });
+    expect(trocarOrganizacao).not.toHaveBeenCalled();
+    expect(carregar).not.toHaveBeenCalled();
+    expect(showToast).not.toHaveBeenCalledWith("Convite aceito com sucesso!", "sucesso");
+    expect(mockNavigate).not.toHaveBeenCalledWith("/dashboard");
+  });
+
+  test("login iniciado por convite mostra Google e aceita usando o token preservado", async () => {
+    api.post.mockImplementation((url) => {
+      if (url === "/auth/google") {
+        return Promise.resolve({
+          data: {
+            token: "token-google",
+            nome: "João Vitor",
+            organizationId: "org-atual",
+            emailVerified: true,
+          },
+        });
+      }
+      if (url === "/convites/token-convite-google/aceitar-existente") {
+        return Promise.resolve({ data: { organizationId: "org-convidante" } });
+      }
+      return Promise.reject(new Error(`URL inesperada: ${url}`));
+    });
+
+    renderPagina([{ pathname: "/", state: { conviteToken: "token-convite-google" } }]);
+    fireEvent.click(screen.getByRole("button", { name: "Continuar com Google" }));
+
+    await waitFor(() => {
+      expect(api.post).toHaveBeenCalledWith(
+        "/convites/token-convite-google/aceitar-existente"
+      );
+    });
+    expect(api.post).toHaveBeenNthCalledWith(1, "/auth/google", {
+      idToken: "credential-de-teste",
+    });
+    expect(api.post).toHaveBeenNthCalledWith(
+      2,
+      "/convites/token-convite-google/aceitar-existente"
+    );
+    expect(login).toHaveBeenCalledWith("token-google", "João Vitor", "org-atual", {
+      redirecionar: false,
+      emailVerified: true,
+    });
+    expect(trocarOrganizacao).toHaveBeenCalledWith("org-convidante");
+    expect(carregar).toHaveBeenCalled();
+    expect(showToast).toHaveBeenCalledWith("Convite aceito com sucesso!", "sucesso");
+    expect(mockNavigate).toHaveBeenCalledWith("/dashboard");
+    expect(api.post.mock.invocationCallOrder[1]).toBeLessThan(
+      trocarOrganizacao.mock.invocationCallOrder[0]
+    );
+    expect(trocarOrganizacao.mock.invocationCallOrder[0]).toBeLessThan(
+      carregar.mock.invocationCallOrder[0]
+    );
+    expect(carregar.mock.invocationCallOrder[0]).toBeLessThan(
+      mockNavigate.mock.invocationCallOrder[0]
+    );
+  });
+
+  test("falha do aceite após Google mantém a sessão sem selecionar organização ou navegar", async () => {
+    api.post.mockImplementation((url) => {
+      if (url === "/auth/google") {
+        return Promise.resolve({
+          data: {
+            token: "token-google",
+            nome: "João Vitor",
+            organizationId: "org-atual",
+            emailVerified: true,
+          },
+        });
+      }
+      if (url === "/convites/token-convite-expirado/aceitar-existente") {
+        return Promise.reject({ response: { data: { erro: "Este convite expirou." } } });
+      }
+      return Promise.reject(new Error(`URL inesperada: ${url}`));
+    });
+
+    renderPagina([{ pathname: "/", state: { conviteToken: "token-convite-expirado" } }]);
+    fireEvent.click(screen.getByRole("button", { name: "Continuar com Google" }));
+
+    await waitFor(() => {
+      expect(showToast).toHaveBeenCalledWith("Este convite expirou.", "erro");
+    });
+    expect(api.post).toHaveBeenNthCalledWith(1, "/auth/google", {
+      idToken: "credential-de-teste",
+    });
+    expect(login).toHaveBeenCalledWith("token-google", "João Vitor", "org-atual", {
+      redirecionar: false,
+      emailVerified: true,
+    });
+    expect(trocarOrganizacao).not.toHaveBeenCalled();
+    expect(carregar).not.toHaveBeenCalled();
+    expect(mockNavigate).not.toHaveBeenCalledWith("/dashboard");
   });
 
   test("[novo] usuário já autenticado (sessão sobrevivente no localStorage) é redirecionado para /dashboard sem mostrar o formulário", () => {
