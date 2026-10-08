@@ -9,6 +9,11 @@ on:
 jobs:
   backend:
     name: Backend (lint + testes)
+    # Database secrets are not available to fork pull requests.
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    concurrency:
+      group: backend-neon-test-db
+      cancel-in-progress: false
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -26,9 +31,14 @@ jobs:
         run: npm ci
 
       - name: Rodar testes
-        run: npm test
+        run: |
+          JWT_SECRET="$(node -e 'process.stdout.write(require("node:crypto").randomBytes(64).toString("hex"))')" npm test
         env:
-          JWT_SECRET: segredo-apenas-para-ci
+          NODE_ENV: test
+          DATABASE_URL: ${{ secrets.TEST_DATABASE_URL }}
+          DIRECT_URL: ${{ secrets.TEST_DIRECT_URL }}
+          TEST_DATABASE_MARKER: ${{ secrets.TEST_DATABASE_MARKER }}
+          CONFIRM_TEST_DB_RESET: YES
 
   frontend:
     name: Frontend (lint + testes + build)

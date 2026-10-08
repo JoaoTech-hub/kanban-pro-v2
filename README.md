@@ -3,16 +3,19 @@
 [![CI](https://github.com/JoaoTech-hub/kanban-pro/actions/workflows/ci.yml/badge.svg)](https://github.com/JoaoTech-hub/kanban-pro/actions/workflows/ci.yml)
 [![Licença MIT](https://img.shields.io/badge/licença-MIT-blue.svg)](./LICENSE)
 
-MVP de uma plataforma SaaS multi-tenant de gerenciamento de tarefas no estilo Kanban, com organizações, projetos, controle de acesso por papel (owner/admin/member), autenticação com revogação de sessão e recuperação de senha por e-mail. Construído como base reutilizável para futuros produtos SaaS.
+MVP de uma plataforma SaaS multi-tenant de gerenciamento de tarefas no estilo Kanban, com organizações, projetos, controle de acesso por papel (owner/admin/member), autenticação por e-mail/senha e Google, convites e recuperação de senha por e-mail.
 
  <img src="docs/gif/drag-and-drop.gif" alt="Drag and Drop" width="100%">
 
 ##  Funcionalidades
 
-- Multi-tenancy: cada conta pertence a uma ou mais organizações, com dados totalmente isolados entre elas
-- Controle de acesso por papel (`owner`, `admin`, `member`) — apenas owner/admin gerenciam projetos, colunas e cards
-- Autenticação com JWT, revogação de sessão (tokens antigos invalidados automaticamente após troca de senha)
-- Recuperação de senha por e-mail, com token de uso único e expiração curta
+- Multi-tenancy: uma conta pode participar de várias organizações, com recursos isolados por organização e projeto
+- Papéis `owner`, `admin` e `member`, com permissões distintas para gerenciar a organização, membros, projetos e conteúdo; todos os membros podem mover cards e colunas
+- Cadastro e login com e-mail/senha ou Google, verificação de e-mail e JWT com expiração de sete dias
+- Logout e troca de senha revogam os JWTs existentes do usuário por meio de `tokenVersion`
+- Recuperação de senha por e-mail, com token de uso único e expiração de uma hora
+- Convites por e-mail para organizações, com fluxos de aceite para contas novas, existentes e Google
+- Limites por organização: plano Free permite até 10 projetos e 10 membros; plano Pro não aplica esses limites
 - Projetos, colunas e cards totalmente customizáveis, com drag-and-drop entre colunas
 - Prioridade, prazo e descrição por tarefa
 - Página de Tarefas com busca e filtros (prioridade / coluna)
@@ -86,10 +89,10 @@ Cada organização pode ter um ou mais quadros (a entidade `Project`, no backend
 
 ##  Stack
 
-**Frontend:** React 19, Vite, React Router, styled-components, @hello-pangea/dnd, Axios
+**Frontend:** React 19, Vite, React Router, styled-components, @hello-pangea/dnd, Axios, Google OAuth
 **Backend:** Node.js, Express 5, PostgreSQL (Neon), Prisma ORM, JWT, bcrypt, Zod (validação), Helmet, express-rate-limit, Resend (e-mail transacional)
 **Testes:** Vitest + Testing Library (frontend), Jest + Supertest (backend)
-**CI:** GitHub Actions (lint, testes e build a cada push/PR)
+**CI:** GitHub Actions (testes do backend; lint, testes e build do frontend em push/PR)
 
 ##  Arquitetura
 
@@ -136,7 +139,7 @@ No frontend, a lógica de comunicação com a API fica isolada em hooks customiz
 
 - **PostgreSQL (Neon) + Prisma em vez de SQLite**: viabiliza múltiplas conexões concorrentes reais (necessário assim que existe mais de um usuário simultâneo) e migrations versionadas, sem exigir um servidor de banco próprio — o free tier do Neon cobre a fase atual do produto.
 
-- **Revogação de sessão via `tokenVersion`**: em vez de refresh tokens (mais complexo de implementar corretamente), cada usuário tem um contador incrementado a cada troca de senha; o middleware de autenticação compara essa versão a cada requisição, invalidando tokens antigos sem esperar a expiração natural.
+- **Revogação de JWT via `tokenVersion`**: o middleware compara a versão do token com a versão atual do usuário. Logout e troca de senha incrementam essa versão e invalidam todos os JWTs existentes daquele usuário, sem esperar a expiração natural de sete dias.
 
 - **Recuperação de senha com token de uso único**: o token enviado por e-mail nunca é guardado em texto puro no banco (só o hash SHA-256), expira em 1 hora, e é invalidado automaticamente após o uso ou ao solicitar um novo.
 
@@ -144,39 +147,29 @@ No frontend, a lógica de comunicação com a API fica isolada em hooks customiz
 
 - **Validação com Zod no backend**: garante que dados inválidos nunca cheguem aos services, independentemente do que o frontend envie — o backend nunca confia apenas na validação do cliente.
 
-- **Autorização por papel (`owner`/`admin`/`member`)**: operações de escrita em projetos, colunas e cards exigem papel gerencial; leitura é liberada para qualquer membro da organização.
+- **Proteções HTTP**: Helmet define cabeçalhos de segurança, CORS usa origens permitidas configuradas em produção, e o express-rate-limit limita a API a 100 requisições por IP em 15 minutos e rotas sensíveis a 10 no mesmo período.
+
+- **Autorização por papel (`owner`/`admin`/`member`)**: leitura é liberada aos membros. Operações de criação, edição e exclusão de projetos, colunas e cards exigem papel gerencial; membros também podem mover e reordenar cards e colunas. Atribuição de `admin` e transferência de propriedade são restritas ao owner.
+
+- **Limites de plano**: o backend aplica os limites Free de 10 projetos e 10 membros tanto na criação de convites/projetos quanto no aceite de convites. O plano Pro não tem esses limites; cobrança e upgrade não fazem parte deste MVP.
 
 - **React.lazy por rota**: como o dashboard (com drag-and-drop) é a tela mais pesada, mas nem toda sessão a acessa imediatamente, dividir o bundle por rota reduz o JS carregado no primeiro acesso (tela de login).
 
 ##  Estrutura do projeto
 
+```text
 Kanban-Pro/
-├── backend/
-│   ├── prisma/
-│   │   ├── schema.prisma   # modelo de dados (multi-tenant)
-│   │   └── migrations/     # histórico de migrations versionadas
-│   ├── src/
-│   │   ├── config/         # conexão Prisma, validação de variáveis de ambiente
-│   │   ├── controllers/    # tradução HTTP ↔ service
-│   │   ├── services/       # regra de negócio
-│   │   │   └── email/      # abstração de envio de e-mail (provider-agnostic)
-│   │   ├── repositories/   # todo acesso ao Prisma fica aqui
-│   │   ├── middlewares/    # autenticação, escopo de organização/projeto, erros
-│   │   ├── routes/         # definição dos endpoints
-│   │   ├── validators/     # schemas de validação (Zod)
-│   │   ├── shared/         # erros de domínio, helpers de autorização
-│   │   └── app.js          # montagem do Express
-│   ├── tests/               # testes de integração (Jest + Supertest)
-│   └── server.js            # ponto de entrada
-└── frontend/
-└── src/
-├── components/     # componentes reutilizáveis
-├── context/        # AuthContext, ThemeContext, ToastContext
-├── hooks/          # useKanban, useColunas, useProjetoAtivo
-├── pages/          # telas da aplicação (carregadas via React.lazy)
-├── services/       # cliente Axios
-├── styles/         # styled-components e tema
-└── tests/          # testes (Vitest + Testing Library)
+|-- .github/workflows/ci.yml
+|-- backend/
+|   |-- prisma/ (schema e migrations)
+|   |-- src/ (config, controllers, services, repositories, middlewares, routes, validators)
+|   |-- tests/ (Jest + Supertest)
+|   `-- server.js
+|-- frontend/
+|   |-- src/ (components, context, hooks, pages, services, styles, tests)
+|   `-- vite.config.js
+`-- README.md
+```
 
 ##  Como rodar localmente
 
@@ -203,7 +196,7 @@ Crie um projeto no Neon e obtenha duas connection strings (uma com connection po
 node -e "console.log(require('crypto').randomBytes(64).toString('hex'))"
 ```
 
-Preencha `DATABASE_URL`, `DIRECT_URL` e `JWT_SECRET` no `.env`. Depois, aplique as migrations e suba o servidor:
+No PowerShell do Windows, crie os arquivos de ambiente com `Copy-Item .env.example .env` (execute dentro da pasta correspondente). Preencha `DATABASE_URL`, `DIRECT_URL` e `JWT_SECRET` no `.env`. Depois, aplique as migrations e suba o servidor:
 
 ```bash
 npx prisma migrate deploy
@@ -223,17 +216,49 @@ cp .env.example .env
 npm run dev
 ```
 
+No PowerShell, execute `Copy-Item .env.example .env` dentro da pasta `frontend/`.
+
 O app sobe em `http://localhost:5173`. Crie uma conta pela tela de registro e comece a usar.
 
 ##  Rodando os testes
 
 ```bash
-# backend (usa um banco Postgres de teste separado — veja .env.example)
-cd backend && npm test
+# backend (requer backend/.env.test configurado conforme a seção abaixo)
+(cd backend && npm test)
 
 # frontend
-cd frontend && npm test
+(cd frontend && npm test)
+
+# testes isolados do guard do banco; não iniciam o globalSetup do Jest
+(cd backend && npm run test:safety)
 ```
+
+Os testes do backend cobrem fluxos de autenticação, convites, permissões e isolamento entre organizações, projetos e cards, além de operações de ordenação. Os testes do frontend cobrem componentes, contextos, autenticação e interações da interface. A execução de `npm test` no backend é de integração e pode limpar os dados do banco de testes configurado.
+
+No PowerShell, a partir da raiz do repositório, execute as suítes com `Push-Location backend; npm test; Pop-Location` e `Push-Location frontend; npm test; Pop-Location`.
+
+### Configuração segura dos testes backend
+
+Os testes de integração do backend usam `backend/.env.test`, que não deve ser commitado. Configure nele `DATABASE_URL` e `DIRECT_URL` apontando para o mesmo banco em uma branch Neon dedicada exclusivamente a testes. Não reutilize o banco de desenvolvimento nem o de produção.
+
+A partir da raiz do repositório, crie o arquivo de configuração local a partir do exemplo:
+
+```bash
+cd backend
+cp .env.example .env.test
+```
+
+Edite `.env.test` para substituir os placeholders pelas configurações apropriadas. O `JWT_SECRET` também precisa ser um valor aleatório com pelo menos 32 bytes.
+
+O guard exige `NODE_ENV=test`, `CONFIRM_TEST_DB_RESET=YES` e `TEST_DATABASE_MARKER` com o identificador exato da branch Neon. O `globalSetup` pode limpar os dados desse banco antes de iniciar as suítes; execute `npm test` somente depois de conferir as duas URLs e o marcador. A ausência ou incompatibilidade desses valores faz o setup abortar.
+
+Para o GitHub Actions, configure em **Settings → Secrets and variables → Actions** estes Secrets:
+
+- `TEST_DATABASE_URL`: URL pooled da branch/banco dedicado de testes.
+- `TEST_DIRECT_URL`: URL direta do mesmo banco e da mesma branch.
+- `TEST_DATABASE_MARKER`: identificador da branch Neon correspondente às duas URLs.
+
+O workflow define `NODE_ENV=test` e `CONFIRM_TEST_DB_RESET=YES` somente no passo de testes backend. Ele gera um `JWT_SECRET` aleatório e efêmero para esse passo, sem gravá-lo no repositório ou imprimi-lo. O job backend é ignorado em pull requests vindos de forks, pois o GitHub não disponibiliza Secrets nesses eventos.
 
 ##  Variáveis de ambiente
 
@@ -242,29 +267,33 @@ cd frontend && npm test
 |---|---|---|
 | `DATABASE_URL` | Sim | Connection string do Postgres (Neon), com connection pooling — usada em runtime |
 | `DIRECT_URL` | Sim | Connection string direta (sem pooling) — usada só pelo Prisma Migrate |
-| `JWT_SECRET` | Sim | Segredo usado para assinar os tokens JWT. Gere um valor aleatório forte (32+ caracteres), nunca use um texto fixo |
+| `JWT_SECRET` | Sim | Segredo usado para assinar os tokens JWT. Gere um valor aleatório forte de pelo menos 32 bytes; nunca use o placeholder ou um texto fixo |
 | `NODE_ENV` | Não (padrão: `development`) | `development`, `test` ou `production` |
 | `PORT` | Não (padrão: `3000`) | Porta em que a API roda |
 | `FRONTEND_URL` | Sim em produção | Origem(ns) permitida(s) pelo CORS, separadas por vírgula se houver mais de uma |
 | `EMAIL_PROVIDER` | Não (padrão: `resend`) | Provedor de e-mail em uso — ver seção [Provedores de e-mail](#-provedores-de-e-mail) |
 | `RESEND_API_KEY` | Sim, se usar Resend | Chave de API gerada em resend.com |
 | `EMAIL_FROM` | Sim, se usar Resend | E-mail remetente (ex: `"Kanban Pro <no-reply@seudominio.com>"`) |
+| `GOOGLE_CLIENT_ID` | Necessária para habilitar o login Google no backend | Client ID autorizado para validar a credencial Google recebida pela API |
 
 **frontend/.env**
 | Variável | Descrição |
 |---|---|
 | `VITE_API_URL` | URL base da API (ex: `http://localhost:3000` em desenvolvimento) |
+| `VITE_GOOGLE_CLIENT_ID` | Client ID OAuth usado pelo botão Google. Sem essa configuração, o botão não é exibido |
 
 ##  Provedores de e-mail
 
-O envio de e-mails (recuperação de senha, e futuros avisos) passa por uma camada de abstração em `backend/src/services/email/`. Nenhuma outra parte do backend conhece qual provedor está em uso — o único ponto de contato é `emailService.enviarResetSenha(...)`.
+O envio de e-mails de recuperação de senha, convite e verificação de e-mail passa por uma camada de abstração em `backend/src/services/email/`. O serviço expõe métodos para esses três fluxos; atualmente, o único provider registrado é o Resend.
 
 backend/src/services/email/
-├── emailService.js          # abstração central — o resto do app só fala com ela
-├── providers/
-│   └── resendProvider.js    # implementação concreta (Resend)
-└── templates/
-└── resetSenha.js        # HTML do e-mail, separado da lógica de envio
+|-- emailService.js
+|-- providers/
+|   `-- resendProvider.js
+`-- templates/
+    |-- convite.js
+    |-- resetSenha.js
+    `-- verificacaoEmail.js
 
 ### Trocar de provedor
 
@@ -286,13 +315,16 @@ Nenhum outro arquivo do projeto precisa mudar — nem os services que disparam e
 
 - [x] Multi-tenancy (organizações, projetos, isolamento de dados)
 - [x] Controle de acesso por papel (owner/admin/member)
-- [x] Revogação de sessão após troca de senha
+- [x] Revogação de JWT no logout e após troca de senha
 - [x] Recuperação de senha por e-mail (backend + frontend)
+- [x] Login com Google e aceite de convite para usuário autenticado com Google
+- [x] Verificação de e-mail
 - [x] Múltiplos quadros por organização (criar, trocar, excluir — respeitando o limite do plano)
+- [x] Limites de projetos e membros por plano (Free e Pro)
 - [ ] Deploy público (Vercel + Render/Railway)
 - [x] Convite de membros para uma organização
-- [x] Paginação em listagens de projetos/colunas/cards
-- [ ] Documentação da API (OpenAPI/Swagger)
+- [x] Paginação na listagem de projetos
+- [x] Documentação da API (OpenAPI/Swagger)
 
 ##  Licença
 

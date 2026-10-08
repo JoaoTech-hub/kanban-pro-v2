@@ -46,3 +46,10 @@ desktop.ini
 *.sw?
 
 coverage/
+
+# Test results, database dumps, and temporary files.
+test-result.txt
+*.dump
+*.dmp
+*.tmp
+*.temp
