@@ -592,6 +592,58 @@ describe("Colunas e Cards", () => {
       expect(resposta.status).toBe(404);
     });
 
+    test("usuário de outra organização não consegue excluir card e o card permanece intacto", async () => {
+      const usuarioA = await registrarUsuario("idorExcluirCardA");
+      const usuarioB = await registrarUsuario("idorExcluirCardB");
+      const projetoA = await criarProjeto(usuarioA.token, usuarioA.organizationId);
+      const projetoB = await criarProjeto(usuarioB.token, usuarioB.organizationId);
+      const colunasA = await request(app)
+        .get(`${base(usuarioA.organizationId, projetoA.id)}/colunas`)
+        .set("Authorization", `Bearer ${usuarioA.token}`);
+      const cardA = await request(app)
+        .post(`${base(usuarioA.organizationId, projetoA.id)}/cards`)
+        .set("Authorization", `Bearer ${usuarioA.token}`)
+        .send({ titulo: "Card privado de A", colunaId: colunasA.body[0].id });
+
+      const tentativa = await request(app)
+        .delete(`${base(usuarioB.organizationId, projetoB.id)}/cards/${cardA.body.id}`)
+        .set("Authorization", `Bearer ${usuarioB.token}`);
+
+      expect(tentativa.status).toBe(404);
+      const cardsDeA = await request(app)
+        .get(`${base(usuarioA.organizationId, projetoA.id)}/cards`)
+        .set("Authorization", `Bearer ${usuarioA.token}`);
+      expect(cardsDeA.body.some((card) => card.id === cardA.body.id)).toBe(true);
+    });
+
+    test("usuário de outra organização não consegue mover card para sua coluna", async () => {
+      const usuarioA = await registrarUsuario("idorMoverCardA");
+      const usuarioB = await registrarUsuario("idorMoverCardB");
+      const projetoA = await criarProjeto(usuarioA.token, usuarioA.organizationId);
+      const projetoB = await criarProjeto(usuarioB.token, usuarioB.organizationId);
+      const colunasA = await request(app)
+        .get(`${base(usuarioA.organizationId, projetoA.id)}/colunas`)
+        .set("Authorization", `Bearer ${usuarioA.token}`);
+      const colunasB = await request(app)
+        .get(`${base(usuarioB.organizationId, projetoB.id)}/colunas`)
+        .set("Authorization", `Bearer ${usuarioB.token}`);
+      const cardA = await request(app)
+        .post(`${base(usuarioA.organizationId, projetoA.id)}/cards`)
+        .set("Authorization", `Bearer ${usuarioA.token}`)
+        .send({ titulo: "Card privado de A", colunaId: colunasA.body[0].id });
+
+      const tentativa = await request(app)
+        .patch(`${base(usuarioB.organizationId, projetoB.id)}/cards/${cardA.body.id}/mover`)
+        .set("Authorization", `Bearer ${usuarioB.token}`)
+        .send({ colunaId: colunasB.body[0].id, ordem: 0 });
+
+      expect(tentativa.status).toBe(404);
+      const cardsDeA = await request(app)
+        .get(`${base(usuarioA.organizationId, projetoA.id)}/cards`)
+        .set("Authorization", `Bearer ${usuarioA.token}`);
+      expect(cardsDeA.body.some((card) => card.id === cardA.body.id && card.colunaId === colunasA.body[0].id)).toBe(true);
+    });
+
     test("400 ao editar sem enviar colunaId (obrigatório também no PATCH, não só na criação)", async () => {
       const usuario = await registrarUsuario("editarCardSemColuna");
       const projeto = await criarProjeto(usuario.token, usuario.organizationId);

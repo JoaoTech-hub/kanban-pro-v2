@@ -381,6 +381,24 @@ describe("PATCH /organizations/:id/members/:userId (alterarRole)", () => {
     expect(resposta.status).toBe(403);
   });
 
+  test("member não pode promover a própria role manipulando o userId da URL", async () => {
+    const dono = await registrarUsuario("selfRoleDono");
+    const membro = await registrarUsuario("selfRoleMembro");
+    await adicionarMembro(dono.organizationId, membro.token, "member");
+    const membroUserId = extrairUserIdDoToken(membro.token);
+
+    const resposta = await request(app)
+      .patch(`/organizations/${dono.organizationId}/members/${membroUserId}`)
+      .set("Authorization", `Bearer ${membro.token}`)
+      .send({ role: "admin" });
+
+    expect(resposta.status).toBe(403);
+    const vinculo = await prisma.organizationMember.findUnique({
+      where: { organizationId_userId: { organizationId: dono.organizationId, userId: membroUserId } },
+    });
+    expect(vinculo.role).toBe("member");
+  });
+
   test("ninguém consegue alterar a role do owner (403) — nem o próprio owner, via este endpoint", async () => {
     const dono = await registrarUsuario("alterarRoleDono6");
     const donoUserId = extrairUserIdDoToken(dono.token);

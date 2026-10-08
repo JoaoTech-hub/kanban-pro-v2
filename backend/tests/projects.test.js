@@ -282,6 +282,26 @@ describe("Projects", () => {
 
       expect(tentativa.status).toBe(404);
     });
+
+    test("usuário de uma organização não consegue excluir projeto de outra organização", async () => {
+      const usuarioA = await registrarUsuario("idorExcluirProjetoA");
+      const usuarioB = await registrarUsuario("idorExcluirProjetoB");
+      const projetoDeA = await request(app)
+        .post(`/organizations/${usuarioA.organizationId}/projects`)
+        .set("Authorization", `Bearer ${usuarioA.token}`)
+        .send({ name: "Projeto que deve permanecer" });
+
+      const tentativa = await request(app)
+        .delete(`/organizations/${usuarioB.organizationId}/projects/${projetoDeA.body.id}`)
+        .set("Authorization", `Bearer ${usuarioB.token}`);
+
+      expect(tentativa.status).toBe(404);
+      const projetoPreservado = await request(app)
+        .get(`/organizations/${usuarioA.organizationId}/projects/${projetoDeA.body.id}`)
+        .set("Authorization", `Bearer ${usuarioA.token}`);
+      expect(projetoPreservado.status).toBe(200);
+      expect(projetoPreservado.body.name).toBe("Projeto que deve permanecer");
+    });
   });
 
     describe("Fundo do quadro (background)", () => {

@@ -5,7 +5,10 @@ const { test } = require("node:test");
 const assert = require("node:assert/strict");
 
 const backendDir = path.resolve(__dirname, "..");
-const script = 'require("./src/config/env"); process.stdout.write("CONFIG_ACCEPTED");';
+const script = `
+  const config = require("./src/config/env");
+  process.stdout.write(process.env.CONFIG_TEST_OUTPUT === "frontendUrl" ? config.FRONTEND_URL : "CONFIG_ACCEPTED");
+`;
 
 function validarConfiguracao(jwtSecret, extras = {}) {
   return spawnSync(process.execPath, ["-e", script], {
@@ -61,4 +64,42 @@ test("aceita configuração de produção válida com segredo forte", () => {
   assert.equal(resultado.status, 0, resultado.stderr);
   assert.equal(resultado.stdout, "CONFIG_ACCEPTED");
   assert.equal(resultado.stderr.includes(segredoForteDeTeste), false);
+});
+
+test("produção sem FRONTEND_URL é rejeitada e não recebe o fallback local", () => {
+  const resultado = validarConfiguracao(randomBytes(32).toString("hex"), {
+    NODE_ENV: "production",
+    FRONTEND_URL: "",
+    EMAIL_PROVIDER: "disabled",
+  });
+
+  assert.notEqual(resultado.status, 0);
+  assert.match(resultado.stderr, /FRONTEND_URL/);
+  assert.doesNotMatch(resultado.stderr, /localhost:5173/);
+});
+
+test("produção com Resend rejeita credenciais obrigatórias ausentes", () => {
+  const resultado = validarConfiguracao(randomBytes(32).toString("hex"), {
+    NODE_ENV: "production",
+    FRONTEND_URL: "https://app.example.test",
+    EMAIL_PROVIDER: "resend",
+    RESEND_API_KEY: "",
+    EMAIL_FROM: "",
+  });
+
+  assert.notEqual(resultado.status, 0);
+  assert.match(resultado.stderr, /RESEND_API_KEY/);
+  assert.match(resultado.stderr, /EMAIL_FROM/);
+  assert.doesNotMatch(resultado.stderr, /app\.example\.test/);
+});
+
+test("ambiente não produtivo mantém o fallback local de FRONTEND_URL", () => {
+  const resultado = validarConfiguracao(randomBytes(32).toString("hex"), {
+    NODE_ENV: "development",
+    FRONTEND_URL: "",
+    CONFIG_TEST_OUTPUT: "frontendUrl",
+  });
+
+  assert.equal(resultado.status, 0, resultado.stderr);
+  assert.equal(resultado.stdout, "http://localhost:5173");
 });
