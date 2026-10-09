@@ -173,7 +173,7 @@ Kanban-Pro/
 
 ##  Como rodar localmente
 
-Pré-requisitos: Node.js 20+, uma conta gratuita no [Neon](https://neon.tech) (Postgres).
+Pré-requisitos: Node.js 24+, uma conta gratuita no [Neon](https://neon.tech) (Postgres).
 
 ### 1. Clonar o repositório
 
