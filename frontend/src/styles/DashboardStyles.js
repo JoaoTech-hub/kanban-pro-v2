@@ -7,7 +7,7 @@ import styled, { keyframes, css } from "styled-components";
 // visual pra quem nunca abrir o seletor).
 export const BoardArea = styled.div`
   background: ${({ $fundo }) => $fundo || "transparent"};
-  border-radius: 16px;
+  border-radius: 0;
   padding: ${({ $fundo }) => ($fundo ? "16px" : "0")};
   margin: ${({ $fundo }) => ($fundo ? "-16px" : "0")};
   transition: background 0.2s;
