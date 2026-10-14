@@ -4,6 +4,7 @@ const jwt = require("jsonwebtoken");
 const prisma = require("../config/db");
 const env = require("../config/env");
 const inviteRepository = require("../repositories/organizationInvite.repository");
+const notificationRepository = require("../repositories/notification.repository");
 const memberRepository = require("../repositories/organizationMember.repository");
 const userRepository = require("../repositories/user.repository");
 const organizationRepository = require("../repositories/organization.repository");
@@ -21,6 +22,32 @@ const { limiteMembros } = require("../shared/planLimits");
 
 const INVITE_TOKEN_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 dias
 
+async function notificarAceiteConvite(invite, nomeUsuario) {
+  try {
+    await notificationRepository.create({
+      userId: invite.invitedById,
+      message: `${nomeUsuario} aceitou seu convite para ${invite.organization.name}.`,
+      type: "invite_accepted",
+      inviteId: invite.id,
+    });
+  } catch (err) {
+    console.error("Falha ao criar notificação de aceite de convite:", err);
+  }
+}
+
+async function notificarNovoConvite(invite, userId, organizationName) {
+  try {
+    await notificationRepository.create({
+      userId,
+      message: `Você foi convidado para ${organizationName}.`,
+      type: "invite_received",
+      inviteId: invite.id,
+    });
+  } catch (err) {
+    console.error("Falha ao criar notificação de convite:", err);
+  }
+}
+
 async function criar({ organization, organizationRole, invitedById, email, role }) {
   garantirPodeAtribuirRole(organizationRole, role);
 
@@ -31,7 +58,7 @@ async function criar({ organization, organizationRole, invitedById, email, role 
     if (jaMembro) throw new ConflictError("Este e-mail já pertence à organização");
   }
 
-  return prisma.$transaction(
+  const resultado = await prisma.$transaction(
     async (tx) => {
       const limite = limiteMembros(organization.plan);
 
@@ -64,6 +91,11 @@ async function criar({ organization, organizationRole, invitedById, email, role 
     },
     { timeout: 15000, maxWait: 10000 }
   );
+
+  if (usuarioExistente) {
+    await notificarNovoConvite(resultado.invite, usuarioExistente.id, organization.name);
+  }
+  return resultado;
 }
 
 async function enviarEmailConvite({ invite, tokenBruto, organization, nomeConvidante }) {
@@ -167,6 +199,8 @@ async function aceitarContaNova(tokenBruto, { nome, senha }) {
     { timeout: 15000, maxWait: 10000 }
   );
 
+  await notificarAceiteConvite(invite, user.name);
+
   const token = jwt.sign(
     { id: user.id, nome: user.name, tokenVersion: user.tokenVersion },
     SEGREDO,
@@ -185,6 +219,17 @@ async function aceitarContaExistente(tokenBruto, usuarioId) {
   const invite = await inviteRepository.findValidByToken(tokenBruto);
   if (!invite) throw new UnauthorizedError("Convite inválido, expirado ou já utilizado");
 
+  return aceitarContaExistenteComInvite(invite, usuarioId);
+}
+
+async function aceitarContaExistentePorId(inviteId, usuarioId) {
+  const invite = await inviteRepository.findValidById(inviteId);
+  if (!invite) throw new UnauthorizedError("Convite inválido, expirado ou já utilizado");
+
+  return aceitarContaExistenteComInvite(invite, usuarioId);
+}
+
+async function aceitarContaExistenteComInvite(invite, usuarioId) {
   const usuario = await userRepository.findById(usuarioId);
   if (!usuario || usuario.email !== invite.email) {
     throw new ForbiddenError("Este convite não pertence à conta com a qual você está logado");
@@ -220,6 +265,8 @@ async function aceitarContaExistente(tokenBruto, usuarioId) {
     { maxWait: 10000 }
   );
 
+  await notificarAceiteConvite(invite, usuario.name);
+
   return { organizationId: invite.organizationId };
 }
 
@@ -231,4 +278,5 @@ module.exports = {
   buscarPorToken,
   aceitarContaNova,
   aceitarContaExistente,
+  aceitarContaExistentePorId,
 };

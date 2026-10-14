@@ -3,6 +3,7 @@ import styled from "styled-components";
 
 import { useAuth } from "../context/AuthContext";
 import HeaderMenu from "./HeaderMenu";
+import NotificationsBell from "./NotificationsBell";
 
 import {
   HeaderContainer,
@@ -96,6 +97,7 @@ export default function Header({ pesquisa, setPesquisa, abrirNovaTarefa, projeto
           Nova tarefa
         </ActionButton>
 
+        <NotificationsBell />
         <HeaderMenu projeto={projeto} />
       </Right>
     </HeaderContainer>

@@ -34,6 +34,7 @@ model User {
   passwordResetTokens     PasswordResetToken[]
   emailVerificationTokens EmailVerificationToken[]
   convitesEnviados        OrganizationInvite[]      @relation("ConvitesEnviados")
+  notifications           Notification[]
 
   @@map("users")
 }
@@ -95,10 +96,27 @@ model OrganizationInvite {
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   invitedBy    User         @relation("ConvitesEnviados", fields: [invitedById], references: [id])
+  notifications Notification[]
 
   @@index([organizationId])
   @@index([email])
   @@map("organization_invites")
+}
+
+model Notification {
+  id        String    @id @default(uuid())
+  userId    String    @map("user_id")
+  message   String
+  type      String    @default("general")
+  inviteId  String?   @map("invite_id")
+  readAt    DateTime? @map("read_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  invite    OrganizationInvite? @relation(fields: [inviteId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, inviteId, type])
+  @@index([userId, readAt, createdAt])
+  @@map("notifications")
 }
 
 model Project {

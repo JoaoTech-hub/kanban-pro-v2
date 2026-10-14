@@ -13,6 +13,7 @@ const projectRoutes = require("./routes/project.routes");
 const colunasRoutes = require("./routes/colunas.routes");
 const cardsRoutes = require("./routes/cards.routes");
 const perfilRoutes = require("./routes/perfil.routes");
+const notificationRoutes = require("./routes/notification.routes");
 const errorHandler = require("./middlewares/errorHandler");
 const { globalLimiter } = require("./middlewares/rateLimiter");
 
@@ -81,6 +82,7 @@ app.use("/organizations/:organizationId/projects", projectRoutes);
 app.use("/organizations/:organizationId/projects/:projectId/colunas", colunasRoutes);
 app.use("/organizations/:organizationId/projects/:projectId/cards", cardsRoutes);
 app.use("/perfil", perfilRoutes);
+app.use("/notifications", notificationRoutes);
 
 // 404
 app.use((req, res) => {

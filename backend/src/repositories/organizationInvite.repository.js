@@ -37,6 +37,21 @@ function findValidByToken(tokenBruto, client = prisma) {
   });
 }
 
+function findValidById(id, client = prisma) {
+  return client.organizationInvite.findFirst({
+    where: {
+      id,
+      acceptedAt: null,
+      revokedAt: null,
+      expiresAt: { gt: new Date() },
+    },
+    include: {
+      organization: { select: { id: true, name: true, plan: true } },
+      invitedBy: { select: { name: true } },
+    },
+  });
+}
+
 // Atômico: só marca como aceito — e só retorna sucesso — se, no momento
 // exato desta operação, o convite ainda estiver pendente (mesmo padrão do
 // markAsUsedIfValid do reset de senha). Fecha a janela de corrida entre
@@ -84,6 +99,7 @@ async function revoke(id, organizationId) {
 module.exports = {
   create,
   findValidByToken,
+  findValidById,
   markAsAcceptedIfValid,
   invalidatePendingForEmail,
   findPendingByOrganization,
