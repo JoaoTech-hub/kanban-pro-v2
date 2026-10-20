@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { FiBell, FiCheck } from "react-icons/fi";
 import styled from "styled-components";
+import IconTooltip from "./IconTooltip";
 import api from "../services/api";
 import { useAuth } from "../context/AuthContext";
 import { useOrganizationsContext } from "../context/OrganizationsContext";
@@ -15,13 +16,21 @@ const Trigger = styled.button`
   place-items: center;
   width: 40px;
   height: 40px;
-  border: 1px solid ${({ theme }) => theme.border};
+  border: 0;
   border-radius: 8px;
-  background: ${({ theme }) => theme.card};
+  background: transparent;
   color: ${({ theme }) => theme.text};
   cursor: pointer;
 
-  &:focus-visible { outline: 2px solid ${({ theme }) => theme.primary}; outline-offset: 2px; }
+  &:hover,
+  &:focus-visible {
+    background: ${({ theme }) => theme.column};
+  }
+
+  &:focus-visible {
+    outline: 2px solid ${({ theme }) => theme.primary};
+    outline-offset: 2px;
+  }
 `;
 
 const Count = styled.span`
@@ -77,9 +86,7 @@ const TextButton = styled.button`
 `;
 
 const NotificationItem = styled.article`
-  display: flex;
-  align-items: flex-start;
-  gap: 10px;
+  display: block;
   padding: 13px 16px;
   border-bottom: 1px solid ${({ theme }) => theme.border};
   background: ${({ $unread, theme }) => ($unread ? theme.background : theme.card)};
@@ -93,6 +100,8 @@ const Message = styled.p`
 `;
 
 const DateText = styled.time`
+  display: block;
+  margin-top: 4px;
   color: ${({ theme }) => theme.muted || theme.text};
   opacity: 0.7;
   font-size: 11px;
@@ -115,7 +124,6 @@ const InviteAction = styled.button`
   display: inline-flex;
   align-items: center;
   min-height: 30px;
-  margin-top: 8px;
   padding: 5px 9px;
   border: 0;
   border-radius: 6px;
@@ -125,11 +133,23 @@ const InviteAction = styled.button`
   font: inherit;
   font-size: 12px;
   font-weight: 600;
+  text-align: center;
   &:disabled { opacity: 0.6; cursor: wait; }
 `;
 
+const NotificationActions = styled.div`
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 12px;
+
+  &:empty { display: none; }
+`;
+
 const OrganizationName = styled.p`
-  margin: -1px 0 0;
+  margin: 4px 0 0;
   font-size: 12px;
   font-weight: 600;
 `;
@@ -160,15 +180,49 @@ export default function NotificationsBell() {
 
   useEffect(() => {
     let active = true;
-    api.get("/notifications")
-      .then(({ data }) => {
+    let requestInFlight = false;
+    let refreshAfterRequest = false;
+
+    async function carregarNotificacoes() {
+      if (requestInFlight) return;
+      requestInFlight = true;
+      try {
+        const { data } = await api.get("/notifications");
         if (!active) return;
         setNotifications(data.notifications || []);
         setUnreadCount(data.unreadCount || 0);
-      })
-      .catch(() => { if (active) setError("Não foi possível carregar as notificações."); })
-      .finally(() => { if (active) setLoading(false); });
-    return () => { active = false; };
+      } catch {
+        if (active) setError("Não foi possível carregar as notificações.");
+      } finally {
+        requestInFlight = false;
+        if (active) {
+          setLoading(false);
+          if (refreshAfterRequest) {
+            refreshAfterRequest = false;
+            carregarNotificacoes();
+          }
+        }
+      }
+    }
+
+    function onVisibilityChange() {
+      if (document.visibilityState === "visible") {
+        if (requestInFlight) refreshAfterRequest = true;
+        else carregarNotificacoes();
+      }
+    }
+
+    carregarNotificacoes();
+    const intervalId = window.setInterval(() => {
+      if (document.visibilityState === "visible") carregarNotificacoes();
+    }, 30_000);
+    document.addEventListener("visibilitychange", onVisibilityChange);
+
+    return () => {
+      active = false;
+      window.clearInterval(intervalId);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+    };
   }, []);
 
   useEffect(() => {
@@ -229,15 +283,17 @@ export default function NotificationsBell() {
 
   return (
     <Wrapper ref={wrapperRef}>
-      <Trigger
-        type="button"
-        aria-label={`Notificações${unreadCount ? `, ${unreadCount} não lidas` : ""}`}
-        aria-expanded={open}
-        onClick={() => setOpen((value) => !value)}
-      >
-        <FiBell size={18} />
-        {unreadCount > 0 && <Count aria-hidden="true">{unreadCount > 99 ? "99+" : unreadCount}</Count>}
-      </Trigger>
+      <IconTooltip label="Notificações">
+        <Trigger
+          type="button"
+          aria-label={`Notificações${unreadCount ? `, ${unreadCount} não lidas` : ""}`}
+          aria-expanded={open}
+          onClick={() => setOpen((value) => !value)}
+        >
+          <FiBell size={18} />
+          {unreadCount > 0 && <Count aria-hidden="true">{unreadCount > 99 ? "99+" : unreadCount}</Count>}
+        </Trigger>
+      </IconTooltip>
 
       {open && (
         <Panel aria-label="Notificações">
@@ -259,6 +315,13 @@ export default function NotificationsBell() {
                 )}
                 <DateText dateTime={item.createdAt}>{formatarData(item.createdAt)}</DateText>
                 <DateText>{item.readAt ? "Lida" : "Não lida"}</DateText>
+              </div>
+              <NotificationActions>
+                {!item.readAt && (
+                  <ReadButton type="button" aria-label="Marcar como lida" onClick={() => markRead(item.id)}>
+                    <FiCheck size={15} />
+                  </ReadButton>
+                )}
                 {inviteIsPending(item) && (
                   <InviteAction
                     type="button"
@@ -268,12 +331,7 @@ export default function NotificationsBell() {
                     {acceptingId === item.id ? "Aceitando..." : "Aceitar convite"}
                   </InviteAction>
                 )}
-              </div>
-              {!item.readAt && (
-                <ReadButton type="button" aria-label="Marcar como lida" onClick={() => markRead(item.id)}>
-                  <FiCheck size={15} />
-                </ReadButton>
-              )}
+              </NotificationActions>
             </NotificationItem>
           ))}
         </Panel>

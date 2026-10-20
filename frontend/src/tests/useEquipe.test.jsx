@@ -44,6 +44,12 @@ function convite(id, email, role) {
   return { id, email, role, invitedBy: { name: "Quem Convidou" } };
 }
 
+function deferred() {
+  let resolve;
+  const promise = new Promise((resolver) => { resolve = resolver; });
+  return { promise, resolve };
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
   localStorage.clear();
@@ -63,6 +69,45 @@ beforeEach(() => {
 });
 
 describe("useEquipe — carregar", () => {
+  test("resposta antiga não substitui os membros após trocar de organização", async () => {
+    const membrosAntigos = deferred();
+    const convitesAntigos = deferred();
+    const membrosAtuais = deferred();
+    const convitesAtuais = deferred();
+    api.get.mockImplementation((url) => {
+      if (url === "/organizations") return Promise.resolve({ data: [] });
+      if (url === "/organizations/org-antiga/members") return membrosAntigos.promise;
+      if (url === "/organizations/org-antiga/invites") return convitesAntigos.promise;
+      if (url === "/organizations/org-atual/members") return membrosAtuais.promise;
+      if (url === "/organizations/org-atual/invites") return convitesAtuais.promise;
+      return Promise.resolve({ data: [] });
+    });
+
+    const { result, rerender } = renderHook(
+      ({ organizationId }) => useEquipe(organizationId),
+      { initialProps: { organizationId: "org-antiga" }, wrapper }
+    );
+
+    let carregamentoAntigo;
+    act(() => { carregamentoAntigo = result.current.carregar(); });
+    rerender({ organizationId: "org-atual" });
+    let carregamentoAtual;
+    act(() => { carregamentoAtual = result.current.carregar(); });
+
+    await act(async () => {
+      membrosAtuais.resolve({ data: [membro("u-atual", "Pessoa Atual", "member")] });
+      convitesAtuais.resolve({ data: [] });
+      await carregamentoAtual;
+    });
+    await act(async () => {
+      membrosAntigos.resolve({ data: [membro("u-antigo", "Pessoa Antiga", "member")] });
+      convitesAntigos.resolve({ data: [] });
+      await carregamentoAntigo;
+    });
+
+    expect(result.current.membros).toEqual([membro("u-atual", "Pessoa Atual", "member")]);
+  });
+
   test("busca membros e convites em paralelo e preenche o estado", async () => {
     api.get.mockImplementation((url) => {
       if (url === "/organizations") {

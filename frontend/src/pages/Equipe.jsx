@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import styled from "styled-components";
 import { FiUserPlus, FiTrash2, FiMail, FiClock } from "react-icons/fi";
 
@@ -133,7 +133,7 @@ function podeGerenciar(meuRole, roleAlvo) {
 }
 
 export default function Equipe() {
-  const { organizationId, trocarOrganizacao, logout } = useAuth();
+  const { organizationId, emailVerified, trocarOrganizacao, logout } = useAuth();
   const { organizacoes, sair, atualizarNome } = useOrganizacoes();
   const {
     membros,
@@ -143,6 +143,7 @@ export default function Equipe() {
     alterarRole,
     removerMembro,
     transferirOwnership,
+    carregar,
     carregouAoMenosUmaVez,
   } = useEquipe();
 
@@ -161,6 +162,35 @@ export default function Equipe() {
   // uma prop muda"), evitando o anti-padrão de chamar setState dentro de um
   // useEffect só pra sincronizar.
   const [nomeOrganizacaoAnterior, setNomeOrganizacaoAnterior] = useState(undefined);
+
+  useEffect(() => {
+    if (!organizationId || !emailVerified || !carregouAoMenosUmaVez) return undefined;
+    let ativo = true;
+    let atualizacaoEmAndamento = false;
+
+    async function atualizarEquipe() {
+      if (!ativo || atualizacaoEmAndamento || document.visibilityState !== "visible") return;
+      atualizacaoEmAndamento = true;
+      try {
+        await carregar();
+      } finally {
+        atualizacaoEmAndamento = false;
+      }
+    }
+
+    function aoVoltarParaAba() {
+      if (document.visibilityState === "visible") atualizarEquipe();
+    }
+
+    const intervalo = window.setInterval(atualizarEquipe, 30_000);
+    document.addEventListener("visibilitychange", aoVoltarParaAba);
+
+    return () => {
+      ativo = false;
+      window.clearInterval(intervalo);
+      document.removeEventListener("visibilitychange", aoVoltarParaAba);
+    };
+  }, [organizationId, emailVerified, carregouAoMenosUmaVez, carregar]);
 
   const minhaOrganizacao = organizacoes.find((o) => o.id === organizationId);
 

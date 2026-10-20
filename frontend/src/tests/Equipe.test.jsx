@@ -1,5 +1,5 @@
-import { describe, test, expect, vi, beforeEach } from "vitest";
-import { render, screen, waitFor, fireEvent, within } from "@testing-library/react";
+import { afterEach, describe, test, expect, vi, beforeEach } from "vitest";
+import { act, render, screen, waitFor, fireEvent, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import api from "../services/api";
 import App from "../App";
@@ -57,7 +57,93 @@ beforeEach(() => {
   localStorage.setItem("organizationId", "org-1");
 });
 
+afterEach(() => vi.useRealTimers());
+
 describe("Equipe — renderização de membros e matriz de autorização (owner/admin/member)", () => {
+  test("atualiza a lista de membros automaticamente enquanto a página está aberta", async () => {
+    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
+    mockApi("owner");
+    let chamadasMembros = 0;
+    api.get.mockImplementation((url) => {
+      if (url === "/organizations") {
+        return Promise.resolve({ data: [{ id: "org-1", name: "Minha Organização", role: "owner", plan: "free" }] });
+      }
+      if (url === "/organizations/org-1/members") {
+        chamadasMembros += 1;
+        return Promise.resolve({ data: chamadasMembros === 1 ? membrosFixture() : membrosFixture().slice(0, 2) });
+      }
+      if (url === "/organizations/org-1/invites") return Promise.resolve({ data: [] });
+      return Promise.resolve({ data: [] });
+    });
+
+    renderEquipe();
+    await aguardarCarregar();
+    expect(screen.getByText("Carlos Member")).toBeInTheDocument();
+    expect(chamadasMembros).toBe(1);
+
+    await act(async () => { await vi.advanceTimersByTimeAsync(30_000); });
+
+    expect(chamadasMembros).toBe(2);
+    expect(screen.queryByText("Carlos Member")).not.toBeInTheDocument();
+  });
+
+  test("atualiza imediatamente quando a aba volta a ficar visível", async () => {
+    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
+    mockApi("owner");
+    const visibility = vi.spyOn(document, "visibilityState", "get").mockReturnValue("hidden");
+    let chamadasMembros = 0;
+    api.get.mockImplementation((url) => {
+      if (url === "/organizations") {
+        return Promise.resolve({ data: [{ id: "org-1", name: "Minha Organização", role: "owner", plan: "free" }] });
+      }
+      if (url === "/organizations/org-1/members") {
+        chamadasMembros += 1;
+        return Promise.resolve({ data: chamadasMembros === 1 ? membrosFixture() : membrosFixture().slice(0, 2) });
+      }
+      if (url === "/organizations/org-1/invites") return Promise.resolve({ data: [] });
+      return Promise.resolve({ data: [] });
+    });
+
+    renderEquipe();
+    await aguardarCarregar();
+    expect(chamadasMembros).toBe(1);
+
+    visibility.mockReturnValue("visible");
+    await act(async () => {
+      fireEvent(document, new Event("visibilitychange"));
+      await Promise.resolve(); await Promise.resolve(); await Promise.resolve();
+    });
+
+    expect(chamadasMembros).toBe(2);
+    expect(screen.queryByText("Carlos Member")).not.toBeInTheDocument();
+    visibility.mockRestore();
+  });
+
+  test("limpa o polling ao sair da página Equipe", async () => {
+    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
+    mockApi("owner");
+    let chamadasMembros = 0;
+    api.get.mockImplementation((url) => {
+      if (url === "/organizations") {
+        return Promise.resolve({ data: [{ id: "org-1", name: "Minha Organização", role: "owner", plan: "free" }] });
+      }
+      if (url === "/organizations/org-1/members") {
+        chamadasMembros += 1;
+        return Promise.resolve({ data: membrosFixture() });
+      }
+      if (url === "/organizations/org-1/invites") return Promise.resolve({ data: [] });
+      return Promise.resolve({ data: [] });
+    });
+
+    const { unmount } = renderEquipe();
+    await aguardarCarregar();
+    expect(chamadasMembros).toBe(1);
+
+    unmount();
+    await act(async () => { await vi.advanceTimersByTimeAsync(60_000); });
+    expect(chamadasMembros).toBe(1);
+  });
+
   test("owner: consegue gerenciar admin e member, mas não vê controle de gestão pra si mesmo", async () => {
     mockApi("owner");
     renderEquipe();

@@ -1,5 +1,5 @@
-import { beforeEach, describe, expect, test, vi } from "vitest";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { ThemeProvider } from "styled-components";
 import NotificationsBell from "../components/NotificationsBell";
 import { lightTheme } from "../styles/theme";
@@ -16,6 +16,8 @@ const FIXTURES = [
   { id: "n-2", message: "Notificação antiga.", createdAt: "2026-10-13T10:00:00.000Z", readAt: "2026-10-13T11:00:00.000Z" },
 ];
 
+afterEach(() => vi.useRealTimers());
+
 function renderBell() {
   return render(<ThemeProvider theme={lightTheme}><NotificationsBell /></ThemeProvider>);
 }
@@ -27,6 +29,59 @@ describe("NotificationsBell", () => {
     api.post.mockReset();
     useAuth.mockReturnValue({ trocarOrganizacao: vi.fn() });
     useOrganizationsContext.mockReturnValue({ carregar: vi.fn().mockResolvedValue() });
+  });
+
+  test("atualiza automaticamente lista e contador a cada 30 segundos", async () => {
+    vi.useFakeTimers();
+    const novasNotificacoes = [
+      ...FIXTURES,
+      { id: "n-3", message: "Novo convite para Produto B.", createdAt: "2026-10-14T12:00:00.000Z", readAt: null },
+    ];
+    api.get.mockReset()
+      .mockResolvedValueOnce({ data: { notifications: FIXTURES, unreadCount: 1 } })
+      .mockResolvedValueOnce({ data: { notifications: novasNotificacoes, unreadCount: 2 } });
+
+    renderBell();
+    await act(async () => { await Promise.resolve(); await Promise.resolve(); });
+    expect(api.get).toHaveBeenCalledTimes(1);
+
+    await act(async () => { await vi.advanceTimersByTimeAsync(30_000); });
+
+    expect(api.get).toHaveBeenCalledTimes(2);
+    fireEvent.click(screen.getByRole("button", { name: "Notificações, 2 não lidas" }));
+    expect(screen.getByText("Novo convite para Produto B.")).toBeInTheDocument();
+  });
+
+  test("consulta imediatamente quando a aba volta a ficar visível", async () => {
+    vi.useFakeTimers();
+    const visibility = vi.spyOn(document, "visibilityState", "get").mockReturnValue("hidden");
+    api.get.mockReset()
+      .mockResolvedValueOnce({ data: { notifications: FIXTURES, unreadCount: 1 } })
+      .mockResolvedValueOnce({ data: { notifications: FIXTURES, unreadCount: 2 } });
+
+    renderBell();
+    await act(async () => { await Promise.resolve(); await Promise.resolve(); });
+    expect(api.get).toHaveBeenCalledTimes(1);
+
+    visibility.mockReturnValue("visible");
+    await act(async () => { fireEvent(document, new Event("visibilitychange")); await Promise.resolve(); await Promise.resolve(); });
+
+    expect(api.get).toHaveBeenCalledTimes(2);
+    expect(screen.getByRole("button", { name: "Notificações, 2 não lidas" })).toBeInTheDocument();
+    visibility.mockRestore();
+  });
+
+  test("limpa o polling quando o componente desmonta", async () => {
+    vi.useFakeTimers();
+    api.get.mockResolvedValue({ data: { notifications: FIXTURES, unreadCount: 1 } });
+    const { unmount } = renderBell();
+    await act(async () => { await Promise.resolve(); await Promise.resolve(); });
+    expect(api.get).toHaveBeenCalledTimes(1);
+
+    unmount();
+    await act(async () => { await vi.advanceTimersByTimeAsync(60_000); });
+
+    expect(api.get).toHaveBeenCalledTimes(1);
   });
 
   test("carrega o contador e exibe mensagem, data e estado de leitura no painel", async () => {

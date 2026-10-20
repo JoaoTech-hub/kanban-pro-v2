@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef } from "react";
 import api from "../services/api";
 import { useToast } from "../context/ToastContext";
 import { useOrganizacoes } from "./useOrganizacoes";
@@ -7,6 +7,9 @@ export function useEquipe(organizationId) {
   const [membros, setMembros] = useState([]);
   const [convites, setConvites] = useState([]);
   const [carregando, setCarregando] = useState(true);
+  const organizationIdAtual = useRef(organizationId);
+  const geracaoRequisicao = useRef(0);
+  organizationIdAtual.current = organizationId;
   const { showToast } = useToast();
   // Precisamos disso só pra atualizar o role do usuário atual (souOwner etc.)
   // depois de transferir ownership — carregar()/removerMembro/alterarRole
@@ -15,19 +18,24 @@ export function useEquipe(organizationId) {
 
   const carregar = useCallback(async () => {
     if (!organizationId) return;
+    const geracaoAtual = ++geracaoRequisicao.current;
     setCarregando(true);
     try {
       const [membrosResp, convitesResp] = await Promise.all([
         api.get(`/organizations/${organizationId}/members`),
         api.get(`/organizations/${organizationId}/invites`),
       ]);
+      if (geracaoAtual !== geracaoRequisicao.current || organizationIdAtual.current !== organizationId) return;
       setMembros(membrosResp.data || []);
       setConvites(convitesResp.data || []);
     } catch (e) {
+      if (geracaoAtual !== geracaoRequisicao.current || organizationIdAtual.current !== organizationId) return;
       console.error(e);
       showToast("Não foi possível carregar a equipe.", "erro");
     } finally {
-      setCarregando(false);
+      if (geracaoAtual === geracaoRequisicao.current && organizationIdAtual.current === organizationId) {
+        setCarregando(false);
+      }
     }
   }, [organizationId, showToast]);
 

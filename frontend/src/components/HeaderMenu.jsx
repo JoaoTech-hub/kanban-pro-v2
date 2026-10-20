@@ -6,6 +6,7 @@ import { useAuth } from "../context/AuthContext";
 import { useTheme } from "../context/ThemeContext";
 import { useProject } from "../context/ProjectContext";
 import { FUNDOS_QUADRO } from "../utils/boardBackgrounds";
+import IconTooltip from "./IconTooltip";
 
 const Wrapper = styled.div`
   position: relative;
@@ -22,6 +23,16 @@ const GatilhoBotao = styled.button`
   cursor: pointer;
   background: transparent;
   color: ${({ theme }) => theme.text};
+
+  &:hover,
+  &:focus-visible {
+    background: ${({ theme }) => theme.column};
+  }
+
+  &:focus-visible {
+    outline: 2px solid ${({ theme }) => theme.primary};
+    outline-offset: 2px;
+  }
 `;
 
 const Popover = styled.div`
@@ -132,15 +143,16 @@ export default function HeaderMenu({ projeto }) {
 
   return (
     <Wrapper ref={wrapperRef}>
-      <GatilhoBotao
-        type="button"
-        onClick={() => setAberto((prev) => !prev)}
-        title="Mais opções"
-        aria-label="Mais opções"
-        aria-expanded={aberto}
-      >
-        <FiMoreVertical size={18} />
-      </GatilhoBotao>
+      <IconTooltip label="Mais opções">
+        <GatilhoBotao
+          type="button"
+          onClick={() => setAberto((prev) => !prev)}
+          aria-label="Mais opções"
+          aria-expanded={aberto}
+        >
+          <FiMoreVertical size={18} />
+        </GatilhoBotao>
+      </IconTooltip>
 
       {aberto && (
         <Popover>
