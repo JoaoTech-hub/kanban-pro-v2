@@ -178,6 +178,20 @@ describe("useProjetos", () => {
     });
 
     expect(api.get).not.toHaveBeenCalled();
+    expect(result.current.carregando).toBe(false);
+  });
+
+  test("carregamento desabilitado intencionalmente termina sem chamar a API", async () => {
+    const { result } = renderHook(() => useProjetos(ORG_ID, undefined, false), { wrapper });
+
+    expect(result.current.carregando).toBe(false);
+
+    await act(async () => {
+      await result.current.carregar();
+    });
+
+    expect(result.current.carregando).toBe(false);
+    expect(api.get).not.toHaveBeenCalled();
   });
 
   test("criarProjeto envia name e type, adiciona à lista e seleciona o novo projeto", async () => {

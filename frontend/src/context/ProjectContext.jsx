@@ -36,7 +36,11 @@ export function ProjectProvider({ children }) {
     logout();
   }, [organizationId, trocarOrganizacao, logout]);
 
-  const { carregar, ...resto } = useProjetos(organizationId, handleOrganizacaoInvalida);
+  const { carregar, ...resto } = useProjetos(
+    organizationId,
+    handleOrganizacaoInvalida,
+    Boolean(organizationId && emailVerified)
+  );
 
   useEffect(() => {
     // Fase 8.1 (correção de auditoria): enquanto o e-mail não estiver

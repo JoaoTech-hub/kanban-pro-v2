@@ -7,7 +7,7 @@ const NOME_PROJETO_PADRAO = "Meu Quadro";
 // Segue a mesma convenção de useKanban/useColunas: o hook expõe estado e
 // funções, mas não decide sozinho quando buscar dados — quem chama (o
 // ProjectContext) é responsável pelo useEffect que dispara `carregar`.
-export function useProjetos(organizationId, aoOrganizacaoInvalida) {
+export function useProjetos(organizationId, aoOrganizacaoInvalida, habilitado = true) {
   const [projetos, setProjetos] = useState([]);
   // Inicializa com o último projeto ativo salvo (se existir) em vez de
   // `null` — é o mesmo valor que `carregar()` mais tarde confirma/corrige
@@ -41,12 +41,15 @@ export function useProjetos(organizationId, aoOrganizacaoInvalida) {
     setProjectId(organizationId ? localStorage.getItem(`projetoAtivo:${organizationId}`) : null);
   }
 
-  const [carregando, setCarregando] = useState(true);
+  const [carregando, setCarregando] = useState(Boolean(organizationId && habilitado));
   const [erro, setErro] = useState(null);
   const { showToast } = useToast();
 
   const carregar = useCallback(async () => {
-    if (!organizationId) return;
+    if (!organizationId || !habilitado) {
+      setCarregando(false);
+      return;
+    }
 
     setCarregando(true);
     setErro(null);
@@ -117,7 +120,7 @@ export function useProjetos(organizationId, aoOrganizacaoInvalida) {
     } finally {
       setCarregando(false);
     }
-  }, [organizationId, aoOrganizacaoInvalida]);
+  }, [organizationId, aoOrganizacaoInvalida, habilitado]);
 
   const selecionarProjeto = useCallback(
     (id) => {
@@ -243,7 +246,7 @@ export function useProjetos(organizationId, aoOrganizacaoInvalida) {
   return {
     projetos,
     projectId,
-    carregando,
+    carregando: Boolean(organizationId && habilitado && carregando),
     erro,
     carregar,
     selecionarProjeto,

@@ -85,6 +85,25 @@ describe("Providers x usuário não verificado — correção do bug da auditori
     expect(screen.queryByText("Entre para gerenciar suas tarefas")).not.toBeInTheDocument();
   });
 
+  test("rota interna sem verificacao redireciona para a confirmacao sem carregar o quadro", async () => {
+    localStorage.setItem("token", "fake-token");
+    localStorage.setItem("nome", "Fulano");
+    localStorage.setItem("organizationId", "org-1");
+    localStorage.setItem("emailVerified", "false");
+    mockApiComEmailNaoVerificado();
+
+    render(
+      <MemoryRouter initialEntries={["/dashboard"]}>
+        <App />
+      </MemoryRouter>
+    );
+
+    expect(await screen.findByText("Verifique seu e-mail")).toBeInTheDocument();
+    expect(screen.queryByText("Carregando seu quadro...")).not.toBeInTheDocument();
+    expect(chamouAlgumaRota(api.get, ["/projects", "/colunas", "/cards"])).toBe(false);
+    expect(localStorage.getItem("token")).toBe("fake-token");
+  });
+
   test("[regressão] emailVerified: true continua carregando projetos/equipe normalmente", async () => {
     localStorage.setItem("token", "fake-token");
     localStorage.setItem("nome", "Fulano");
