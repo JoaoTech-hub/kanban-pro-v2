@@ -53,6 +53,24 @@ Cada organização pode ter um ou mais quadros (a entidade `Project`, no backend
 
 ---
 
+###  Equipe
+
+![Equipe](docs/screenshots/team.png)
+
+---
+
+###  Fundo do Quadro
+
+![Fundo do quadro](docs/screenshots/board-background.png)
+
+---
+
+###  Notificações
+
+![Notificações](docs/screenshots/notifications.png)
+
+---
+
 ###  Perfil
 
 ![Perfil](docs/screenshots/profile.png)
@@ -80,6 +98,22 @@ Cada organização pode ter um ou mais quadros (a entidade `Project`, no backend
 ###  Cadastro
 
 ![Cadastro](docs/screenshots/register.png)
+
+---
+
+###  Recuperação de Senha
+
+#### Formulário
+
+![Formulário de recuperação de senha](docs/screenshots/password-recovery.png)
+
+#### Confirmação de envio
+
+![Confirmação de envio da recuperação de senha](docs/screenshots/password-recovery-sent.png)
+
+#### E-mail recebido
+
+![E-mail de recuperação de senha](docs/screenshots/password-reset-email.png)
 
 ---
 
