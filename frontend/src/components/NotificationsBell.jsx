@@ -174,6 +174,7 @@ export default function NotificationsBell() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [acceptingId, setAcceptingId] = useState(null);
+  const [now, setNow] = useState(0);
   const wrapperRef = useRef(null);
   const { trocarOrganizacao } = useAuth();
   const { carregar } = useOrganizationsContext();
@@ -191,6 +192,7 @@ export default function NotificationsBell() {
         if (!active) return;
         setNotifications(data.notifications || []);
         setUnreadCount(data.unreadCount || 0);
+        setNow(Date.now());
       } catch {
         if (active) setError("Não foi possível carregar as notificações.");
       } finally {
@@ -278,7 +280,7 @@ export default function NotificationsBell() {
   function inviteIsPending(item) {
     return item.type === "invite_received" && item.invite &&
       !item.invite.acceptedAt && !item.invite.revokedAt &&
-      new Date(item.invite.expiresAt).getTime() > Date.now();
+      new Date(item.invite.expiresAt).getTime() > now;
   }
 
   return (

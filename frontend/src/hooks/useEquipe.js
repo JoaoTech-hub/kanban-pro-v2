@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useRef, useLayoutEffect } from "react";
 import api from "../services/api";
 import { useToast } from "../context/ToastContext";
 import { useOrganizacoes } from "./useOrganizacoes";
@@ -9,7 +9,10 @@ export function useEquipe(organizationId) {
   const [carregando, setCarregando] = useState(true);
   const organizationIdAtual = useRef(organizationId);
   const geracaoRequisicao = useRef(0);
-  organizationIdAtual.current = organizationId;
+  useLayoutEffect(() => {
+    organizationIdAtual.current = organizationId;
+    geracaoRequisicao.current += 1;
+  }, [organizationId]);
   const { showToast } = useToast();
   // Precisamos disso só pra atualizar o role do usuário atual (souOwner etc.)
   // depois de transferir ownership — carregar()/removerMembro/alterarRole

@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useRef, useLayoutEffect } from "react";
 import api from "../services/api";
 
 export function normalizarColuna(coluna) {
@@ -80,12 +80,15 @@ export function useKanban(organizationId, projectId) {
   const [contextoAnterior, setContextoAnterior] = useState({ organizationId, projectId });
   if (organizationId !== contextoAnterior.organizationId || projectId !== contextoAnterior.projectId) {
     setContextoAnterior({ organizationId, projectId });
-    geracaoCarregamento.current += 1;
     setCards([]);
     setColunas([]);
     setErro(null);
     setCarregando(false);
   }
+
+  useLayoutEffect(() => {
+    geracaoCarregamento.current += 1;
+  }, [organizationId, projectId]);
 
   const base = `/organizations/${organizationId}/projects/${projectId}`;
 

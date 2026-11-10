@@ -29,18 +29,20 @@ vi.mock("../hooks/useOrganizacoes", () => ({
 // autenticação é exercida pelo useGoogleAuth real.
 vi.mock("../components/GoogleAuthButton", async () => {
   const { useGoogleAuth } = await vi.importActual("../hooks/useGoogleAuth");
+  function MockGoogleAuthButton({ aoAutenticar }) {
+    const { entrarComGoogle, tratarErroGoogle } = useGoogleAuth();
+    return (
+      <button
+        type="button"
+        onClick={() => entrarComGoogle("credential-de-teste", aoAutenticar).catch(tratarErroGoogle)}
+      >
+        Continuar com Google
+      </button>
+    );
+  }
+
   return {
-    default: ({ aoAutenticar }) => {
-      const { entrarComGoogle, tratarErroGoogle } = useGoogleAuth();
-      return (
-        <button
-          type="button"
-          onClick={() => entrarComGoogle("credential-de-teste", aoAutenticar).catch(tratarErroGoogle)}
-        >
-          Continuar com Google
-        </button>
-      );
-    },
+    default: MockGoogleAuthButton,
   };
 });
 
