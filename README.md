@@ -3,7 +3,13 @@
 [![CI](https://github.com/JoaoTech-hub/kanban-pro/actions/workflows/ci.yml/badge.svg)](https://github.com/JoaoTech-hub/kanban-pro/actions/workflows/ci.yml)
 [![Licença MIT](https://img.shields.io/badge/licença-MIT-blue.svg)](./LICENSE)
 
+## Sobre o projeto
+
 MVP de uma plataforma SaaS multi-tenant de gerenciamento de tarefas no estilo Kanban, com organizações, projetos, controle de acesso por papel (owner/admin/member), autenticação por e-mail/senha e Google, convites e recuperação de senha por e-mail.
+
+Este projeto representa a evolução de uma aplicação anterior de gerenciamento de tarefas. A partir da experiência adquirida no desenvolvimento da primeira versão, decidi construir esta nova aplicação de forma independente, aprimorando aspectos como arquitetura, organização do código, segurança, testes automatizados e experiência do usuário.
+
+O objetivo foi desenvolver uma solução mais completa e estruturada, aplicando boas práticas de engenharia de software e simulando desafios encontrados em projetos Full Stack reais.
 
  <img src="docs/gif/drag-and-drop.gif" alt="Drag and Drop" width="100%">
 
