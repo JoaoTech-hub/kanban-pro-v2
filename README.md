@@ -355,6 +355,7 @@ Nenhum outro arquivo do projeto precisa mudar — nem os services que disparam e
 - [x] Verificação de e-mail
 - [x] Múltiplos quadros por organização (criar, trocar, excluir — respeitando o limite do plano)
 - [x] Limites de projetos e membros por plano (Free e Pro)
+- [ ] Docker e Docker Compose
 - [ ] Deploy público (Vercel + Render/Railway)
 - [x] Convite de membros para uma organização
 - [x] Paginação na listagem de projetos
